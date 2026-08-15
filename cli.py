@@ -87,8 +87,60 @@ def _get_db():
     return HealthDatabase(str(PROJECT_ROOT / "data" / "health.db"))
 
 
+def _get_user_db():
+    from core.user_database import UserDatabase
+    return UserDatabase(str(PROJECT_ROOT / "data" / "users.db"))
+
+
 def _db_exists() -> bool:
     return (PROJECT_ROOT / "data" / "health.db").exists()
+
+
+def _sync_employee_account(employee: dict, employee_id: int) -> None:
+    user_db = _get_user_db()
+    account, _ = user_db.ensure_employee_account(employee, employee_id=employee_id)
+    user_db.close()
+    logger.debug(
+        "员工账号已同步: %s (%s)",
+        account.get("employee_name"),
+        account.get("username"),
+    )
+
+
+def _sync_all_employee_accounts() -> int:
+    if not _db_exists():
+        return 0
+    db = _get_db()
+    try:
+        employees = db.get_all_employees()
+        if not employees:
+            return 0
+        user_db = _get_user_db()
+        try:
+            synced = user_db.sync_employees(employees)
+        finally:
+            user_db.close()
+        return sum(1 for _, password in synced if password)
+    finally:
+        db.close()
+
+
+def func_auth_prompt() -> dict | None:
+    print_header("员工账号")
+    user_db = _get_user_db()
+    try:
+        while True:
+            username = _input("  用户名: ")
+            password = _input("  密码: ")
+            user = user_db.authenticate(username, password)
+            if user:
+                print(f"  [OK] 登录成功: {user['employee_name']} ({user['username']})")
+                _pause()
+                return user
+            print("  [!] 登录失败")
+            _pause()
+    finally:
+        user_db.close()
 
 
 def _show_status() -> bool:
@@ -383,6 +435,7 @@ def _import_single_file(is_pdf: bool = False) -> None:
         db = _get_db()
         emp_id = db.get_or_create_employee(name, gender)
         record_id = db.save_report(emp_id, report_data)
+        _sync_employee_account({"name": name, "gender": gender}, emp_id)
         print(f"        员工ID={emp_id}, 记录ID={record_id}")
 
         print("  [4/5] 趋势分析...")
@@ -474,6 +527,7 @@ def _import_batch() -> None:
 
                 emp_id = db.get_or_create_employee(name, gender)
                 record_id = db.save_report(emp_id, report_data)
+                _sync_employee_account({"name": name, "gender": gender}, emp_id)
                 print(f"    -> {name}, {len(indicators)}项指标, {len(abnormal)}项异常, 记录ID={record_id}")
 
                 for ind_name, ind_info in abnormal.items():
@@ -721,7 +775,7 @@ def func_reset() -> None:
         return
 
     db_path.unlink()
-    print("  [OK] 数据库已清空")
+    print("  [OK] 报告数据库已清空，员工账号已保留")
     _pause()
 
 
@@ -872,14 +926,71 @@ def _test_llm_connection(config: dict) -> None:
         print(f"  [!] 测试失败: {e}")
 
 
+def func_account_management() -> None:
+    print_header("员工账号管理")
+
+    user_db = _get_user_db()
+    try:
+        synced_count = _sync_all_employee_accounts()
+        if synced_count:
+            print(f"  [OK] 已同步 {synced_count} 个新账号")
+
+        users = user_db.list_users()
+        if not users:
+            print("  暂无员工账号")
+        else:
+            print(f"  {'用户名':<18} {'员工':<10} {'性别':<4} {'状态':<6} {'最近登录':<19}")
+            print(f"  {'------':<18} {'----':<10} {'----':<4} {'----':<6} {'--------':<19}")
+            for user in users:
+                last_login = user.get("last_login_at") or "-"
+                status = "启用" if user.get("is_active") else "停用"
+                print(
+                    f"  {user['username']:<18} {user['employee_name']:<10} {user['gender']:<4} "
+                    f"{status:<6} {last_login:<19}"
+                )
+
+        print()
+        print("  1. 重置账号密码")
+        print("  2. 重新同步员工账号")
+        print("  3. 登录")
+        print("  0. 返回")
+
+        choice = _input("\n  请选择: ")
+        if choice == "1":
+            username = _input("  用户名: ")
+            password = user_db.reset_password(username)
+            if password is None:
+                print("  [!] 未找到该账号")
+            else:
+                print(f"  [OK] 密码已重置，初始密码: {password}")
+        elif choice == "2":
+            synced = _sync_all_employee_accounts()
+            print(f"  [OK] 已同步 {synced} 个账号")
+        elif choice == "3":
+            user = func_auth_prompt()
+            if user:
+                print(f"  当前登录: {user['employee_name']}")
+    finally:
+        user_db.close()
+
+    _pause()
+
+
 # ======================================================================
 #  主菜单
 # ======================================================================
 
 def main():
+    current_user = None
+    if _db_exists():
+        _sync_all_employee_accounts()
+    current_user = func_auth_prompt()
+
     while True:
         print("\n" + "=" * 50)
         print("  E-Health Agent  体检报告智能解读系统")
+        if current_user:
+            print(f"  当前登录: {current_user['employee_name']} ({current_user['username']})")
         print("=" * 50)
 
         _show_status()
@@ -895,10 +1006,11 @@ def main():
         print("  | 7. 导入模拟数据   |")
         print("  | 8. 清空数据库     |")
         print("  | 9. 设置           |")
+        print("  | 10. 员工账号      |")
         print("  | 0. 退出           |")
         print("  +------------------+")
 
-        choice = _input("\n  请选择 [0-9]: ")
+        choice = _input("\n  请选择 [0-10]: ")
 
         if choice == "1":
             func_overview()
@@ -918,11 +1030,13 @@ def main():
             func_reset()
         elif choice == "9":
             func_settings()
+        elif choice == "10":
+            func_account_management()
         elif choice == "0":
             print("\n  再见!")
             break
         else:
-            print("  [!] 无效选择，请输入 0-9")
+            print("  [!] 无效选择，请输入 0-10")
 
 
 if __name__ == "__main__":
