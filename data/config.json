@@ -1,0 +1,7 @@
+{
+  "mode": "api",
+  "api_key": "b64:c2stUlhqaGhBVUNLNU5MUHg1YzI3QTVHNHBxNU9RVWVnajd0VFZROHVWV1NhMlBvWVQ5",
+  "base_url": "https://deepkey.top/v1",
+  "model": "gpt-5.4-mini",
+  "local_url": "http://localhost:1234/v1"
+}
