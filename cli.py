@@ -4,7 +4,7 @@ E-Health Agent 正式版 CLI
 LLM 配置通过界面设置，持久化存储，下次启动自动加载。
 
 用法:
-    python main.py
+    python cli.py
 """
 
 from __future__ import annotations

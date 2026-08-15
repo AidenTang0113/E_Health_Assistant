@@ -53,7 +53,9 @@ def _encrypt(plaintext: str) -> str:
         try:
             import win32crypt
             # CryptProtectData 返回 (description, encrypted_bytes)
-            _, encrypted = win32crypt.CryptProtectData(
+            # pywin32 versions differ: some return ciphertext bytes directly,
+            # while others return (description, ciphertext).
+            protected = win32crypt.CryptProtectData(
                 plaintext.encode("utf-8"),
                 "E-Health Agent API Key",
                 None,
@@ -61,6 +63,7 @@ def _encrypt(plaintext: str) -> str:
                 None,
                 0,
             )
+            encrypted = protected[-1] if isinstance(protected, tuple) else protected
             return base64.b64encode(encrypted).decode("ascii")
         except ImportError:
             # pywin32 未安装，回退
@@ -87,13 +90,14 @@ def _decrypt(ciphertext: str) -> str:
         try:
             import win32crypt
             encrypted = base64.b64decode(ciphertext)
-            _, plaintext = win32crypt.CryptUnprotectData(
+            unprotected = win32crypt.CryptUnprotectData(
                 encrypted,
                 None,
                 None,
                 None,
                 0,
             )
+            plaintext = unprotected[-1] if isinstance(unprotected, tuple) else unprotected
             return plaintext.decode("utf-8")
         except ImportError:
             logger.warning("pywin32 未安装，无法解密 API Key")
