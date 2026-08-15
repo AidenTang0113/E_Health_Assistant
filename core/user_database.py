@@ -255,6 +255,9 @@ class UserDatabase:
             if employee_id is not None and existing["employee_id"] != employee_id:
                 updates.append("employee_id = ?")
                 params.append(employee_id)
+            if existing["role"] != self.EMPLOYEE_ROLE:
+                updates.append("role = ?")
+                params.append(self.EMPLOYEE_ROLE)
             if existing["employee_name"] != name:
                 updates.append("employee_name = ?")
                 params.append(name)
@@ -311,14 +314,15 @@ class UserDatabase:
         conn.execute(
             """
             INSERT INTO users (
-                employee_key, employee_name, gender, birth_year,
+                employee_key, employee_name, gender, role, birth_year,
                 employee_id, username, password_hash, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
             """,
             (
                 key,
                 name,
                 gender,
+                self.EMPLOYEE_ROLE,
                 birth_year,
                 employee_id,
                 username,
@@ -369,7 +373,7 @@ class UserDatabase:
     def reset_password(self, username: str, new_password: Optional[str] = None) -> Optional[str]:
         conn = self._get_conn()
         row = conn.execute(
-            "SELECT id, employee_name, gender, birth_year, username FROM users WHERE username = ?",
+            "SELECT id, employee_name, gender, role, birth_year, username FROM users WHERE username = ?",
             (username,),
         ).fetchone()
         if not row:
@@ -384,6 +388,24 @@ class UserDatabase:
         )
         conn.commit()
         return password
+
+    def delete_user(self, username: str) -> bool:
+        if username == self.ADMIN_USERNAME:
+            return False
+        conn = self._get_conn()
+        cur = conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        conn.commit()
+        return cur.rowcount > 0
+
+    def delete_all_users(self, keep_admin: bool = True) -> int:
+        conn = self._get_conn()
+        if keep_admin:
+            cur = conn.execute("DELETE FROM users WHERE username <> ?", (self.ADMIN_USERNAME,))
+        else:
+            cur = conn.execute("DELETE FROM users")
+        conn.commit()
+        self._ensure_admin_account()
+        return cur.rowcount
 
     def close(self) -> None:
         if self._conn:

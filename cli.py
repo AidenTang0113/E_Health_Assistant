@@ -372,6 +372,53 @@ def func_employee_detail() -> None:
     _pause()
 
 
+def func_my_profile(current_user: dict) -> None:
+    print_header("我的档案")
+
+    employee_id = current_user.get("employee_id")
+    if not employee_id:
+        print("  当前账号未关联员工档案")
+        _pause()
+        return
+
+    if not _db_exists():
+        print("  数据库不存在")
+        _pause()
+        return
+
+    db = _get_db()
+    employee = db.get_employee(employee_id)
+    if not employee:
+        print("  未找到员工档案")
+        db.close()
+        _pause()
+        return
+
+    history = db.get_history(employee_id)
+    print(f"  员工: {employee['name']} ({employee['gender']})  ID: {employee['id']}")
+    if employee.get("birth_year"):
+        print(f"  出生年份: {employee['birth_year']}")
+    print(f"  报告数: {len(history)}")
+
+    if not history:
+        print("  暂无体检报告")
+        db.close()
+        _pause()
+        return
+
+    latest = history[-1]
+    indicators = latest["report_data"].get("indicators", {})
+    abnormal = {k: v for k, v in indicators.items() if v.get("status") == "abnormal"}
+
+    print(f"\n  最新报告: {latest['report_date']}")
+    print(f"  指标: {len(indicators)} 项, 异常: {len(abnormal)} 项")
+    for name, info in abnormal.items():
+        print(f"    [!] {name}: {info.get('value', '?')} {info.get('unit', '')}")
+
+    db.close()
+    _pause()
+
+
 def func_add_report() -> None:
     print_header("添加体检报告")
     print("  1. 从图片文件导入 (OCR)")
@@ -939,20 +986,21 @@ def func_account_management() -> None:
         if not users:
             print("  暂无员工账号")
         else:
-            print(f"  {'用户名':<18} {'员工':<10} {'性别':<4} {'状态':<6} {'最近登录':<19}")
-            print(f"  {'------':<18} {'----':<10} {'----':<4} {'----':<6} {'--------':<19}")
+            print(f"  {'用户名':<18} {'角色':<8} {'员工':<10} {'状态':<6} {'最近登录':<19}")
+            print(f"  {'------':<18} {'----':<8} {'----':<10} {'----':<6} {'--------':<19}")
             for user in users:
                 last_login = user.get("last_login_at") or "-"
                 status = "启用" if user.get("is_active") else "停用"
                 print(
-                    f"  {user['username']:<18} {user['employee_name']:<10} {user['gender']:<4} "
+                    f"  {user['username']:<18} {user.get('role', 'employee'):<8} {user['employee_name']:<10} "
                     f"{status:<6} {last_login:<19}"
                 )
 
         print()
         print("  1. 重置账号密码")
-        print("  2. 重新同步员工账号")
-        print("  3. 登录")
+        print("  2. 删除用户")
+        print("  3. 清空所有员工用户")
+        print("  4. 重新同步员工账号")
         print("  0. 返回")
 
         choice = _input("\n  请选择: ")
@@ -964,12 +1012,17 @@ def func_account_management() -> None:
             else:
                 print(f"  [OK] 密码已重置，初始密码: {password}")
         elif choice == "2":
+            username = _input("  用户名: ")
+            if user_db.delete_user(username):
+                print("  [OK] 用户已删除")
+            else:
+                print("  [!] 删除失败")
+        elif choice == "3":
+            removed = user_db.delete_all_users(keep_admin=True)
+            print(f"  [OK] 已删除 {removed} 个员工用户")
+        elif choice == "4":
             synced = _sync_all_employee_accounts()
             print(f"  [OK] 已同步 {synced} 个账号")
-        elif choice == "3":
-            user = func_auth_prompt()
-            if user:
-                print(f"  当前登录: {user['employee_name']}")
     finally:
         user_db.close()
 
@@ -995,48 +1048,64 @@ def main():
 
         _show_status()
 
-        print()
-        print("  +---- 功能菜单 ----+")
-        print("  | 1. 系统总览       |")
-        print("  | 2. 员工列表       |")
-        print("  | 3. 查询员工详情   |")
-        print("  | 4. 添加报告       |")
-        print("  | 5. LLM 指标解读   |")
-        print("  | 6. 趋势分析       |")
-        print("  | 7. 导入模拟数据   |")
-        print("  | 8. 清空数据库     |")
-        print("  | 9. 设置           |")
-        print("  | 10. 员工账号      |")
-        print("  | 0. 退出           |")
-        print("  +------------------+")
+        if current_user.get("role") == "admin":
+            print()
+            print("  +---- 管理菜单 ----+")
+            print("  | 1. 系统总览       |")
+            print("  | 2. 员工列表       |")
+            print("  | 3. 查询员工详情   |")
+            print("  | 4. 添加报告       |")
+            print("  | 5. LLM 指标解读   |")
+            print("  | 6. 趋势分析       |")
+            print("  | 7. 导入模拟数据   |")
+            print("  | 8. 清空数据库     |")
+            print("  | 9. 设置           |")
+            print("  | 10. 员工账号      |")
+            print("  | 0. 退出           |")
+            print("  +------------------+")
 
-        choice = _input("\n  请选择 [0-10]: ")
+            choice = _input("\n  请选择 [0-10]: ")
 
-        if choice == "1":
-            func_overview()
-        elif choice == "2":
-            func_employee_list()
-        elif choice == "3":
-            func_employee_detail()
-        elif choice == "4":
-            func_add_report()
-        elif choice == "5":
-            func_llm_interpret()
-        elif choice == "6":
-            func_trend_analysis()
-        elif choice == "7":
-            func_import_mock()
-        elif choice == "8":
-            func_reset()
-        elif choice == "9":
-            func_settings()
-        elif choice == "10":
-            func_account_management()
-        elif choice == "0":
-            print("\n  再见!")
-            break
+            if choice == "1":
+                func_overview()
+            elif choice == "2":
+                func_employee_list()
+            elif choice == "3":
+                func_employee_detail()
+            elif choice == "4":
+                func_add_report()
+            elif choice == "5":
+                func_llm_interpret()
+            elif choice == "6":
+                func_trend_analysis()
+            elif choice == "7":
+                func_import_mock()
+            elif choice == "8":
+                func_reset()
+            elif choice == "9":
+                func_settings()
+            elif choice == "10":
+                func_account_management()
+            elif choice == "0":
+                print("\n  再见!")
+                break
+            else:
+                print("  [!] 无效选择，请输入 0-10")
         else:
-            print("  [!] 无效选择，请输入 0-10")
+            print()
+            print("  +---- 员工菜单 ----+")
+            print("  | 1. 我的档案       |")
+            print("  | 0. 退出           |")
+            print("  +------------------+")
+
+            choice = _input("\n  请选择 [0-1]: ")
+            if choice == "1":
+                func_my_profile(current_user)
+            elif choice == "0":
+                print("\n  再见!")
+                break
+            else:
+                print("  [!] 无效选择，请输入 0-1")
 
 
 if __name__ == "__main__":
