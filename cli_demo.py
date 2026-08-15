@@ -356,17 +356,11 @@ def test_batch(batch_dir: str = None, api_key: str = None, base_url: str = None,
     from core.parser import ReportParser
     from core.database import HealthDatabase
     from core.llm_agent import LLMAgent
-    from utils.mock_data import init_mock_database
 
     engine = OCREngine()
     parser = ReportParser()
     db_path = PROJECT_ROOT / "data" / "health.db"
     db = HealthDatabase(str(db_path))
-
-    # 首次运行导入历史模拟数据作为趋势对比基准
-    if len(db.get_all_employees()) == 0:
-        print("\n首次运行，导入历史模拟数据...")
-        init_mock_database(db)
 
     agent = LLMAgent(
         mock_mode=False,
@@ -457,6 +451,148 @@ def test_batch(batch_dir: str = None, api_key: str = None, base_url: str = None,
             if r["status"] == "failed":
                 print(f"    - {r['file']}: {r['error']}")
 
+def test_status() -> None:
+    """查看系统整体状态：数据库概览、员工健康汇总、异常指标统计"""
+    print_section("E-Health Agent 系统状态")
+
+    from core.database import HealthDatabase
+
+    db_path = PROJECT_ROOT / "data" / "health.db"
+    if not db_path.exists():
+        print("  数据库不存在，请先导入数据")
+        print(f"  预期路径: {db_path}")
+        return
+
+    db = HealthDatabase(str(db_path))
+    employees = db.get_all_employees()
+
+    if not employees:
+        print("  数据库为空，无员工数据")
+        print("  请先运行: python cli_demo.py --test batch --batch-dir <dir>")
+        db.close()
+        return
+
+    # --- 1. 总览 ---
+    total_reports = 0
+    total_abnormal = 0
+    all_abnormal_items = {}
+
+    for emp in employees:
+        history = db.get_history(emp["id"])
+        total_reports += len(history)
+        for record in history:
+            indicators = record["report_data"].get("indicators", {})
+            for name, info in indicators.items():
+                if info.get("status") == "abnormal":
+                    total_abnormal += 1
+                    if name not in all_abnormal_items:
+                        all_abnormal_items[name] = {"count": 0, "employees": set()}
+                    all_abnormal_items[name]["count"] += 1
+                    all_abnormal_items[name]["employees"].add(emp["name"])
+
+    print()
+    print("  +--- 总览 ---+")
+    print(f"  | 数据库: {db_path}")
+    print(f"  | 员工数: {len(employees)}")
+    print(f"  | 报告数: {total_reports}")
+    print(f"  | 异常记录: {total_abnormal} 条")
+    print(f"  | 异常指标类型: {len(all_abnormal_items)} 种")
+
+    # --- 2. 员工列表 ---
+    print()
+    print("  +--- 员工列表 ---+")
+    print(f"  {'ID':>4}  {'姓名':<8} {'性别':<4} {'报告数':>4}  {'最新体检日期':<12}")
+    print(f"  {'----':>4}  {'--------':<8} {'----':<4} {'----':>4}  {'------------':<12}")
+    for emp in employees:
+        history = db.get_history(emp["id"])
+        latest_date = history[-1]["report_date"] if history else "-"
+        print(f"  {emp['id']:>4}  {emp['name']:<8} {emp['gender']:<4} {len(history):>4}  {latest_date:<12}")
+
+    # --- 3. 每人健康摘要 ---
+    print()
+    print("  +--- 健康摘要 ---+")
+    for emp in employees:
+        history = db.get_history(emp["id"])
+        if not history:
+            print(f"  {emp['name']}: 无记录")
+            continue
+
+        latest = history[-1]
+        indicators = latest["report_data"].get("indicators", {})
+        abnormal = {k: v for k, v in indicators.items() if v.get("status") == "abnormal"}
+        total = len(indicators)
+
+        status_icon = "[*]" if not abnormal else "[!]"
+        print(f"\n  {status_icon} {emp['name']} ({emp['gender']}) - {latest['report_date']}")
+        print(f"      指标: {total} 项, 异常: {len(abnormal)} 项, 历史报告: {len(history)} 份")
+
+        if abnormal:
+            for name, info in abnormal.items():
+                val = info.get("value", "?")
+                unit = info.get("unit", "")
+                atype = info.get("abnormal_type", "?")
+                ref = info.get("ref_range", "?")
+                print(f"      [!] {name}: {val} {unit} ({atype}, 参考: {ref})")
+
+                # 趋势
+                trend = db.check_trend_warning(emp["id"], name)
+                if trend["trend"] != "insufficient" and len(trend["values"]) > 1:
+                    vals_str = " -> ".join(str(v) for v in trend["values"])
+                    print(f"          趋势: {trend['trend']} ({vals_str})")
+                    if trend["warning"]:
+                        print(f"          预警: {trend['message']}")
+        else:
+            print(f"      所有指标正常")
+
+    # --- 4. 异常指标排行 ---
+    if all_abnormal_items:
+        print()
+        print("  +--- 异常指标排行 ---+")
+        sorted_items = sorted(all_abnormal_items.items(), key=lambda x: x[1]["count"], reverse=True)
+        print(f"  {'指标':<14} {'次数':>4}  {'涉及员工':<20}")
+        print(f"  {'------------':<14} {'----':>4}  {'--------------------':<20}")
+        for name, data in sorted_items:
+            emps = ", ".join(sorted(data["employees"]))
+            print(f"  {name:<14} {data['count']:>4}  {emps:<20}")
+
+    db.close()
+    print()
+    print(f"  数据库连接已关闭")
+
+
+def test_reset() -> None:
+    """清空数据库所有数据"""
+    print_section("清空数据库")
+
+    import sqlite3
+
+    db_path = PROJECT_ROOT / "data" / "health.db"
+    if not db_path.exists():
+        print("  数据库不存在，无需清空")
+        return
+
+    # 先统计要删的数据
+    conn = sqlite3.connect(str(db_path))
+    emp_count = conn.execute("SELECT COUNT(*) FROM employees").fetchone()[0]
+    rec_count = conn.execute("SELECT COUNT(*) FROM health_records").fetchone()[0]
+    conn.close()
+
+    if emp_count == 0 and rec_count == 0:
+        print("  数据库已为空，无需清空")
+        return
+
+    print(f"  当前数据: {emp_count} 名员工, {rec_count} 条记录")
+    print(f"  数据库路径: {db_path}")
+    print()
+    print("  正在清空...")
+
+    # 直接删除数据库文件，下次运行自动重建
+    db_path.unlink()
+
+    print("  [OK] 数据库已清空")
+    print()
+    print("  提示: 下次运行 batch/full/database 时会自动创建新数据库")
+
 
 # ======================================================================
 #  主入口
@@ -477,6 +613,8 @@ def main():
   python cli_demo.py --test full --image report.jpg
   python cli_demo.py --test full --mock
   python cli_demo.py --test batch --batch-dir ./reports
+  python cli_demo.py --test status
+  python cli_demo.py --test reset
 
 使用 OpenAI API 测试:
   set OPENAI_API_KEY=sk-xxx
@@ -488,7 +626,7 @@ def main():
     )
     parser.add_argument(
         "--test",
-        choices=["ocr", "parse", "database", "llm", "full", "batch"],
+        choices=["ocr", "parse", "database", "llm", "full", "batch", "status", "reset"],
         default="full",
         help="测试模块 (默认: full)",
     )
@@ -564,6 +702,10 @@ def main():
                 base_url=args.base_url,
                 model=args.model,
             )
+        elif args.test == "status":
+            test_status()
+        elif args.test == "reset":
+            test_reset()
     except KeyboardInterrupt:
         print("\n\n[!] 用户中断")
         sys.exit(1)
