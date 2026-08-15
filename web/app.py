@@ -44,19 +44,23 @@ def inject_styles() -> None:
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
         :root {
-            --ink: #17222b;
-            --muted: #66747d;
-            --teal: #087f8c;
-            --teal-dark: #075d68;
-            --cream: #f7f4ed;
-            --orange: #f29d49;
-            --red: #c94c4c;
-            --line: #dce5e3;
+            --bg: #f7f8fb;
+            --surface: #ffffff;
+            --surface-soft: #eef1f6;
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --accent: #2563eb;
+            --accent-soft: #dbeafe;
+            --line: #d9dee8;
+            --success: #2f855a;
+            --warning: #b45309;
+            --danger: #b91c1c;
         }
 
         html, body, [class*="css"] {
             font-family: "DM Sans", sans-serif;
             color: var(--ink);
+            background: var(--bg);
         }
 
         h1, h2, h3 {
@@ -65,26 +69,72 @@ def inject_styles() -> None:
         }
 
         .block-container {
-            padding-top: 2.5rem;
+            padding-top: 2rem;
             max-width: 1500px;
         }
 
         [data-testid="stSidebar"] {
-            background: #102d34;
+            background: #f4f6fa;
+            border-right: 1px solid var(--line);
         }
 
         [data-testid="stSidebar"] * {
-            color: #f2f8f5;
+            color: var(--ink);
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stRadio"] > label {
+            display: none;
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] {
+            display: flex;
+            flex-direction: column;
+            gap: .45rem;
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label {
+            align-items: center;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 10px;
+            color: var(--muted);
+            cursor: pointer;
+            display: flex;
+            font-size: .88rem;
+            font-weight: 600;
+            justify-content: flex-start;
+            min-width: 0;
+            min-height: 2.45rem;
+            padding: 0 .9rem;
+            transition: background .18s ease, border-color .18s ease, color .18s ease;
+            width: 100%;
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
+            background: var(--surface);
+            color: var(--ink);
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {
+            background: var(--accent-soft);
+            border-color: #bfd6fd;
+            box-shadow: inset 3px 0 0 var(--accent);
+            color: var(--accent);
+        }
+
+        [data-testid="stSidebar"] div[data-testid="stRadio"] div[role="radiogroup"] > label > div:first-child {
+            display: none;
         }
 
         .hero {
             background:
-                radial-gradient(circle at 90% 10%, rgba(242, 157, 73, .45), transparent 28%),
-                linear-gradient(120deg, #0b5963 0%, #0d7881 62%, #1598a0 100%);
-            border-radius: 24px;
+                radial-gradient(circle at 90% 10%, rgba(37, 99, 235, .16), transparent 26%),
+                linear-gradient(120deg, #111827 0%, #1f2937 48%, #334155 100%);
+            border-radius: 22px;
             padding: 2.1rem 2.3rem;
             color: white;
             margin-bottom: 1.5rem;
+            box-shadow: 0 18px 36px rgba(31, 41, 55, .12);
         }
 
         .hero h1 {
@@ -94,14 +144,14 @@ def inject_styles() -> None:
         }
 
         .hero p {
-            color: #d9f4ef;
+            color: #dbe4f0;
             max-width: 700px;
             font-size: 1.05rem;
             margin-bottom: 0;
         }
 
         .eyebrow {
-            color: var(--orange);
+            color: #93c5fd;
             font-size: .75rem;
             font-weight: 700;
             letter-spacing: .13em;
@@ -109,12 +159,12 @@ def inject_styles() -> None:
         }
 
         .card {
-            background: white;
+            background: var(--surface);
             border: 1px solid var(--line);
             border-radius: 18px;
             padding: 1.1rem 1.2rem;
             height: 100%;
-            box-shadow: 0 8px 24px rgba(16, 45, 52, .04);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
         }
 
         .card-label {
@@ -125,7 +175,7 @@ def inject_styles() -> None:
         }
 
         .card-value {
-            color: var(--teal-dark);
+            color: var(--accent);
             font-family: "Space Grotesk", sans-serif;
             font-size: 2rem;
             font-weight: 700;
@@ -140,16 +190,17 @@ def inject_styles() -> None:
             padding: .22rem .62rem;
         }
 
-        .status-normal { background: #e4f4ec; color: #177348; }
-        .status-abnormal { background: #fff0e5; color: #a44d16; }
-        .status-warning { background: #fff5cf; color: #856600; }
-        .status-muted { background: #edf1f1; color: #607074; }
+        .status-normal { background: #e8f5ee; color: var(--success); }
+        .status-abnormal { background: #fdecec; color: var(--danger); }
+        .status-warning { background: #fff4dd; color: var(--warning); }
+        .status-muted { background: var(--surface-soft); color: var(--muted); }
 
         div[data-testid="stMetric"] {
-            background: white;
+            background: var(--surface);
             border: 1px solid var(--line);
             border-radius: 16px;
             padding: 1rem;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
         }
 
         .section-note {
