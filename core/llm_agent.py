@@ -376,6 +376,7 @@ class LLMAgent:
         value: float,
         ref_range: str,
         knowledge_context: str,
+        detailed: bool = False,
     ) -> str:
         """
         构建 LLM 解读 Prompt
@@ -385,11 +386,49 @@ class LLMAgent:
             value: 指标值
             ref_range: 参考范围字符串
             knowledge_context: RAG 检索到的知识库上下文
+            detailed: True=详细解读, False=简略解读
 
         Returns:
             完整的 prompt 字符串
         """
-        prompt = f"""你是一位专业的健康管理AI助手，请根据以下体检指标信息给出解读建议。
+        if detailed:
+            output_spec = """```json
+{{
+  "summary": "一句话概述该指标的异常情况",
+  "risk_level": "低风险|中风险|高风险",
+  "interpretation": "对该指标异常的医学解读（2-4句，解释可能的含义和原因）",
+  "possible_causes": ["可能原因1", "可能原因2", "可能原因3"],
+  "advice": ["建议1", "建议2", "建议3", "建议4", "建议5"],
+  "lifestyle": ["生活方式调整建议1", "生活方式调整建议2", "生活方式调整建议3"],
+  "follow_up": "复查建议（多久复查一次、查什么）",
+  "knowledge_ref": "引用知识库中的原文出处",
+  "urgency": "是否需要尽快就医: 是|否|建议咨询"
+}}
+```"""
+            notes = """1. 解读要专业准确，用通俗易懂的语言解释医学含义
+2. 可能原因列举3-5条常见原因
+3. 建议要具体、可操作，涵盖饮食/运动/作息/就医等方面
+4. 生活方式调整单独列出，给出日常可行的具体建议
+5. 复查建议要明确时间节点和检查项目
+6. 引用知识库原文时注明出处
+7. 不要给出确诊结论，建议进一步就医检查
+8. 保持专业、客观、关怀的语气"""
+        else:
+            output_spec = """```json
+{{
+  "summary": "一句话概述该指标的异常情况",
+  "risk_level": "低风险|中风险|高风险",
+  "advice": ["建议1", "建议2", "建议3"],
+  "knowledge_ref": "引用知识库中的原文出处"
+}}
+```"""
+            notes = """1. summary 用一句话概括，不超过30字
+2. 建议给3条，每条不超过20字，具体可操作
+3. 引用知识库原文时注明出处
+4. 不要给出确诊结论，建议进一步就医检查
+5. 保持专业、简洁"""
+
+        prompt = f"""你是一位专业的健康管理AI助手，请根据以下体检指标信息给出{"详细" if detailed else "简略"}解读建议。
 
 ## 体检指标
 - 指标名称: {indicator_name}
@@ -401,20 +440,10 @@ class LLMAgent:
 
 ## 输出要求
 请严格按以下 JSON 格式输出（不要输出其他内容）:
-```json
-{{
-  "summary": "一句话概述该指标的异常情况",
-  "risk_level": "低风险|中风险|高风险",
-  "advice": ["建议1", "建议2", "建议3"],
-  "knowledge_ref": "引用知识库中的原文出处"
-}}
-```
+{output_spec}
 
 ## 注意事项
-1. 建议要具体、可操作，不要空泛
-2. 引用知识库原文时注明出处
-3. 不要给出确诊结论，建议进一步就医检查
-4. 保持专业、客观、关怀的语气
+{notes}
 """
         return prompt
 
@@ -423,7 +452,11 @@ class LLMAgent:
     # ------------------------------------------------------------------
 
     def get_advice(
-        self, indicator_name: str, value: float, ref_range: str = ""
+        self,
+        indicator_name: str,
+        value: float,
+        ref_range: str = "",
+        detailed: bool = False,
     ) -> Dict[str, Any]:
         """
         获取指标的健康建议
@@ -432,18 +465,16 @@ class LLMAgent:
             indicator_name: 指标名称
             value: 指标值
             ref_range: 参考范围字符串（可选）
+            detailed: True=详细解读（含解读/原因/生活方式/复查建议），
+                     False=简略解读（仅摘要+风险+建议）
 
         Returns:
-            {
-                "summary": str,
-                "risk_level": str,
-                "advice": List[str],
-                "knowledge_ref": str,
-                "source": "llm" | "mock",
-            }
+            简略模式: {"summary", "risk_level", "advice", "knowledge_ref", "source"}
+            详细模式: 以上 + "interpretation", "possible_causes",
+                     "lifestyle", "follow_up", "urgency"
         """
         if self.mock_mode:
-            return self.get_mock_advice(indicator_name, value)
+            return self.get_mock_advice(indicator_name, value, detailed=detailed)
 
         try:
             # RAG 检索知识库
@@ -452,7 +483,8 @@ class LLMAgent:
 
             # 构建 Prompt
             prompt = self.build_prompt(
-                indicator_name, value, ref_range, knowledge_context
+                indicator_name, value, ref_range, knowledge_context,
+                detailed=detailed,
             )
 
             # 调用 LLM
@@ -468,7 +500,7 @@ class LLMAgent:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=1024,
+                max_tokens=2048 if detailed else 1024,
             )
 
             raw_output = response.choices[0].message.content.strip()
@@ -494,7 +526,7 @@ class LLMAgent:
     # ------------------------------------------------------------------
 
     def get_mock_advice(
-        self, indicator_name: str, value: float
+        self, indicator_name: str, value: float, detailed: bool = False
     ) -> Dict[str, Any]:
         """
         返回预设的 Mock 建议（LM Studio 未启动时使用）
@@ -502,6 +534,7 @@ class LLMAgent:
         Args:
             indicator_name: 指标名称
             value: 指标值
+            detailed: True=详细模式，补充更多预设字段
 
         Returns:
             预设建议字典
@@ -530,6 +563,25 @@ class LLMAgent:
             "knowledge_ref": advice_data["knowledge_ref"],
             "source": "mock",
         }
+
+        if detailed:
+            result["interpretation"] = (
+                f"{indicator_name}检测值为{value}，"
+                f"{'低于' if abnormal_type == 'low' else '高于'}参考范围"
+                f"（{low}-{high}），提示可能存在异常。"
+            )
+            result["possible_causes"] = [
+                "生活方式因素（饮食、运动、睡眠等）",
+                "个体差异与生理波动",
+                "建议进一步检查明确原因",
+            ]
+            result["lifestyle"] = [
+                "保持均衡饮食，控制相关指标",
+                "规律运动，每周至少150分钟中等强度运动",
+                "充足睡眠，避免熬夜",
+            ]
+            result["follow_up"] = "建议1-3个月后复查，如持续异常请就医"
+            result["urgency"] = "建议咨询" if abnormal_type else "否"
 
         logger.info(
             f"Mock 建议: {indicator_name}={value} "
@@ -583,3 +635,99 @@ class LLMAgent:
             "advice": [raw[:200] + "..." if len(raw) > 200 else raw],
             "knowledge_ref": "",
         }
+
+    # ------------------------------------------------------------------
+    #  LLM 辅助报告解析
+    # ------------------------------------------------------------------
+
+    def parse_report_with_llm(self, ocr_lines: list) -> dict:
+        """
+        将 OCR 原始文本交给 LLM 做结构化提取
+        不依赖正则，直接让 LLM 理解文本语义并返回结构化 JSON
+
+        Args:
+            ocr_lines: OCR 提取的文本行列表
+
+        Returns:
+            结构化报告字典（与 ReportParser.parse() 格式一致）
+        """
+        if self.mock_mode:
+            logger.info("LLM 解析: Mock 模式，跳过")
+            return {"indicators": {}, "_parse_source": "mock_skipped"}
+
+        ocr_text = "\n".join(ocr_lines)
+
+        prompt = f"""请从以下体检报告 OCR 文本中提取结构化数据。
+
+## OCR 原始文本
+{ocr_text}
+
+## 输出要求
+请严格按以下 JSON 格式输出，不要输出任何其他内容：
+```json
+{{
+  "name": "姓名（找不到则为null）",
+  "gender": "男或女（找不到则为null）",
+  "age": 年龄数字或null,
+  "report_date": "YYYY-MM-DD格式（找不到则为null）",
+  "indicators": {{
+    "指标名称": {{
+      "value": 数值,
+      "unit": "单位",
+      "status": "normal或abnormal",
+      "abnormal_type": "high或low或null",
+      "ref_range": "参考范围描述"
+    }}
+  }}
+}}
+```
+
+## 提取规则
+1. 指标名用标准医学名称（如"空腹血糖"而非"血糖"，"谷丙转氨酶"而非"ALT"）
+2. 如果 OCR 文本有错别字，请自动纠正（如"总旦红素"应为"总胆红素"）
+3. 数值提取纯数字（如"5.8 mmol/L"提取为 5.8）
+4. 单位提取标准写法（mmol/L, U/L, g/L, μmol/L, 10^9/L 等）
+5. 参考范围如能从文本中识别则填入，否则填 "未知"
+6. status 判断：数值在参考范围内为 normal，超出为 abnormal
+7. abnormal_type: 偏高为 high，偏低为 low
+8. 如果一行中有多个指标，请分别提取
+9. 如果指标名和数值不在同一行，请结合上下文推断对应关系
+10. 忽略非指标内容（如医院名称、医生签名、报告标题等）
+11. 常见体检指标包括但不限于：空腹血糖、糖化血红蛋白、谷丙转氨酶、谷草转氨酶、
+    总胆红素、直接胆红素、总蛋白、白蛋白、球蛋白、总胆固醇、甘油三酯、
+    低密度脂蛋白、高密度脂蛋白、肌酐、尿素氮、尿酸、白细胞计数、
+    红细胞计数、血红蛋白、血小板计数、甲胎蛋白、癌胚抗原等
+"""
+
+        try:
+            response = self._client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是一个体检报告解析引擎。"
+                            "从 OCR 识别文本中提取结构化体检数据。"
+                            "只输出 JSON，不要输出任何解释文字。"
+                        ),
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.1,
+                max_tokens=2048,
+            )
+
+            raw_output = response.choices[0].message.content.strip()
+            result = self._parse_llm_output(raw_output)
+            result["_parse_source"] = "llm"
+
+            ind_count = len(result.get("indicators", {}))
+            logger.info(
+                f"LLM 报告解析完成: {result.get('name', '?')}, "
+                f"{ind_count} 项指标"
+            )
+            return result
+
+        except Exception as e:
+            logger.error(f"LLM 报告解析失败: {e}")
+            return {"indicators": {}, "_parse_source": "failed", "_error": str(e)}
