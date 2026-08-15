@@ -19,5 +19,8 @@ httpx>=0.27.0
 # CLI
 # argparse is part of Python standard library
 
+# Web UI
+streamlit>=1.36.0
+
 # Utils
 dataclasses>=0.0; python_version < "3.10"
