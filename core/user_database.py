@@ -24,7 +24,8 @@ class UserDatabase:
     ADMIN_USERNAME = "admin"
     ADMIN_PASSWORD = "123456"
     ADMIN_EMPLOYEE_KEY = "__admin__"
-    ADMIN_ROLE = "admin"
+    HR_ROLE = "HR"
+    MANAGER_ROLE = "manager"
     EMPLOYEE_ROLE = "employee"
 
     def __init__(self, db_path: str = "data/users.db") -> None:
@@ -61,6 +62,15 @@ class UserDatabase:
 
             CREATE INDEX IF NOT EXISTS idx_users_employee_id
                 ON users(employee_id);
+
+            CREATE TABLE IF NOT EXISTS user_audit_log (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                action     TEXT NOT NULL,
+                target     TEXT NOT NULL,
+                operator   TEXT NOT NULL,
+                detail     TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            );
             """
         )
         self._ensure_role_column()
@@ -75,6 +85,29 @@ class UserDatabase:
                 "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'employee'"
             )
             conn.commit()
+        conn.execute(
+            "UPDATE users SET role = ? WHERE username = ? OR role = ?",
+            (self.HR_ROLE, self.ADMIN_USERNAME, "admin"),
+        )
+        conn.commit()
+
+    def _log_action(self, action: str, target: str, operator: str, detail: str = "") -> None:
+        conn = self._get_conn()
+        conn.execute(
+            "INSERT INTO user_audit_log (action, target, operator, detail) "
+            "VALUES (?, ?, ?, ?)",
+            (action, target, operator, detail),
+        )
+        conn.commit()
+
+    def list_audit_logs(self, limit: int = 50) -> List[Dict[str, Any]]:
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT id, action, target, operator, detail, created_at "
+            "FROM user_audit_log ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        return [self._row_to_dict(row) for row in cursor.fetchall()]
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
@@ -118,7 +151,7 @@ class UserDatabase:
                     self.ADMIN_EMPLOYEE_KEY,
                     self.ADMIN_USERNAME,
                     "admin",
-                    self.ADMIN_ROLE,
+                    self.HR_ROLE,
                     password_hash,
                     row["id"],
                 ),
@@ -135,7 +168,7 @@ class UserDatabase:
                     self.ADMIN_EMPLOYEE_KEY,
                     self.ADMIN_USERNAME,
                     "admin",
-                    self.ADMIN_ROLE,
+                    self.HR_ROLE,
                     self.ADMIN_USERNAME,
                     password_hash,
                 ),
@@ -203,6 +236,16 @@ class UserDatabase:
         )
         return [self._row_to_dict(row) for row in cursor.fetchall()]
 
+    def list_users_by_role(self, role: str) -> List[Dict[str, Any]]:
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT id, employee_key, employee_name, gender, role, birth_year, employee_id, "
+            "username, is_active, created_at, updated_at, last_login_at "
+            "FROM users WHERE role = ? ORDER BY id",
+            (role,),
+        )
+        return [self._row_to_dict(row) for row in cursor.fetchall()]
+
     def get_user(self, username: str) -> Optional[Dict[str, Any]]:
         conn = self._get_conn()
         row = conn.execute(
@@ -220,6 +263,16 @@ class UserDatabase:
             "username, password_hash, is_active, created_at, updated_at, last_login_at "
             "FROM users WHERE employee_key = ?",
             (employee_key,),
+        ).fetchone()
+        return self._row_to_dict(row) if row else None
+
+    def get_user_by_employee_name(self, employee_name: str) -> Optional[Dict[str, Any]]:
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT id, employee_key, employee_name, gender, role, birth_year, employee_id, "
+            "username, password_hash, is_active, created_at, updated_at, last_login_at "
+            "FROM users WHERE employee_name = ? ORDER BY id LIMIT 1",
+            (employee_name.strip(),),
         ).fetchone()
         return self._row_to_dict(row) if row else None
 
@@ -255,7 +308,7 @@ class UserDatabase:
             if employee_id is not None and existing["employee_id"] != employee_id:
                 updates.append("employee_id = ?")
                 params.append(employee_id)
-            if existing["role"] != self.EMPLOYEE_ROLE:
+            if existing["role"] not in (self.EMPLOYEE_ROLE, self.MANAGER_ROLE):
                 updates.append("role = ?")
                 params.append(self.EMPLOYEE_ROLE)
             if existing["employee_name"] != name:
@@ -370,7 +423,72 @@ class UserDatabase:
         user.pop("password_hash", None)
         return user
 
-    def reset_password(self, username: str, new_password: Optional[str] = None) -> Optional[str]:
+    def update_user_profile(
+        self,
+        username: str,
+        new_username: str | None = None,
+        old_password: str | None = None,
+        new_password: str | None = None,
+        birth_year: int | None = None,
+    ) -> tuple[bool, str]:
+        """
+        更新用户资料（用户名/密码/出生年）。
+        修改密码需验证旧密码，管理员不得通过此接口修改。
+
+        Returns:
+            (success, message)
+        """
+        conn = self._get_conn()
+        user = conn.execute(
+            "SELECT id, role, password_hash FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if not user:
+            return False, "账号不存在"
+        if user["role"] == self.HR_ROLE:
+            return False, "管理员账号不允许自助修改"
+
+        # 新用户名冲突检查
+        if new_username and new_username != username:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE username = ? AND username != ?",
+                (new_username, username),
+            ).fetchone()
+            if existing:
+                return False, f"用户名 '{new_username}' 已被使用"
+
+        # 密码修改需验证旧密码
+        if new_password:
+            if not old_password:
+                return False, "修改密码需提供旧密码"
+            if not self._verify_password(old_password, user["password_hash"]):
+                return False, "旧密码错误"
+            password_hash = self._hash_password(new_password)
+            conn.execute(
+                "UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE username = ?",
+                (password_hash, username),
+            )
+
+        # 更新用户名
+        if new_username and new_username != username:
+            conn.execute(
+                "UPDATE users SET username = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE username = ?",
+                (new_username, username),
+            )
+
+        # 更新出生年
+        if birth_year is not None:
+            conn.execute(
+                "UPDATE users SET birth_year = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE username = ?",
+                (birth_year, username),
+            )
+
+        conn.commit()
+        return True, "更新成功"
+
+    def reset_password(self, username: str, new_password: Optional[str] = None, operator: str = "system") -> Optional[str]:
         conn = self._get_conn()
         row = conn.execute(
             "SELECT id, employee_name, gender, role, birth_year, username FROM users WHERE username = ?",
@@ -387,15 +505,82 @@ class UserDatabase:
             (password_hash, user["id"]),
         )
         conn.commit()
+        self._log_action("reset_password", username, operator)
         return password
 
-    def delete_user(self, username: str) -> bool:
+    def deactivate_user(self, username: str, operator: str = "system") -> bool:
+        """停用用户账号（软删除），保留健康档案。"""
         if username == self.ADMIN_USERNAME:
             return False
         conn = self._get_conn()
-        cur = conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        cur = conn.execute(
+            "UPDATE users SET is_active = 0, updated_at = datetime('now', 'localtime') "
+            "WHERE username = ? AND is_active = 1",
+            (username,),
+        )
         conn.commit()
-        return cur.rowcount > 0
+        if cur.rowcount > 0:
+            self._log_action("deactivate", username, operator)
+            return True
+        return False
+
+    def reactivate_user(self, username: str, operator: str = "system") -> bool:
+        """重新启用已停用的账号。"""
+        conn = self._get_conn()
+        cur = conn.execute(
+            "UPDATE users SET is_active = 1, updated_at = datetime('now', 'localtime') "
+            "WHERE username = ? AND is_active = 0",
+            (username,),
+        )
+        conn.commit()
+        if cur.rowcount > 0:
+            self._log_action("reactivate", username, operator)
+            return True
+        return False
+
+    def delete_user(
+        self,
+        username: str,
+        *,
+        delete_records: bool = False,
+        health_db=None,
+        operator: str = "system",
+    ) -> bool:
+        """
+        硬删除用户账号。
+
+        Args:
+            username: 用户名
+            delete_records: 是否同时删除健康档案（默认 False）
+            health_db: HealthDatabase 实例（delete_records=True 时必传）
+            operator: 操作者（用于审计日志）
+        """
+        if username == self.ADMIN_USERNAME:
+            return False
+
+        conn = self._get_conn()
+        user = self.get_user(username)
+        if not user:
+            return False
+
+        # 可选：连带删除健康档案
+        if delete_records and health_db and user.get("employee_id"):
+            h_conn = health_db._get_conn()
+            # health_records 通过 FK ON DELETE CASCADE 自动级联
+            h_conn.execute("DELETE FROM employees WHERE id = ?", (user["employee_id"],))
+            h_conn.commit()
+            self._log_action(
+                "delete_records", username, operator,
+                detail=f"employee_id={user['employee_id']}",
+            )
+
+        conn.execute("DELETE FROM users WHERE username = ?", (username,))
+        conn.commit()
+        self._log_action(
+            "delete_user", username, operator,
+            detail=f"delete_records={'yes' if delete_records else 'no'}",
+        )
+        return True
 
     def delete_all_users(self, keep_admin: bool = True) -> int:
         conn = self._get_conn()
@@ -406,6 +591,78 @@ class UserDatabase:
         conn.commit()
         self._ensure_admin_account()
         return cur.rowcount
+
+    def promote_employee_to_manager(self, employee_name: str) -> Optional[Dict[str, Any]]:
+        conn = self._get_conn()
+        user = self.get_user_by_employee_name(employee_name)
+        if not user:
+            return None
+        if user.get("role") == self.HR_ROLE:
+            return user
+        conn.execute(
+            "UPDATE users SET role = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            (self.MANAGER_ROLE, user["id"]),
+        )
+        conn.commit()
+        self._log_action("promote_to_manager", employee_name, "system")
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        return self._row_to_dict(row)
+
+    def demote_manager_by_name(self, employee_name: str) -> Optional[Dict[str, Any]]:
+        conn = self._get_conn()
+        user = self.get_user_by_employee_name(employee_name)
+        if not user or user.get("role") != self.MANAGER_ROLE:
+            return None
+        conn.execute(
+            "UPDATE users SET role = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
+            (self.EMPLOYEE_ROLE, user["id"]),
+        )
+        conn.commit()
+        self._log_action("demote_to_employee", employee_name, "system")
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user["id"],)).fetchone()
+        return self._row_to_dict(row)
+
+    def create_manager_account(
+        self,
+        employee_name: str,
+        username: str,
+        password: str,
+        gender: str = "manager",
+    ) -> Tuple[Dict[str, Any], str]:
+        conn = self._get_conn()
+        employee_name = employee_name.strip() or username.strip()
+        username = username.strip()
+        if not employee_name or not username or not password:
+            raise ValueError("missing manager account fields")
+        existing = conn.execute(
+            "SELECT 1 FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+        if existing:
+            raise ValueError("username already exists")
+        password_hash = self._hash_password(password)
+        conn.execute(
+            """
+            INSERT INTO users (
+                employee_key, employee_name, gender, role, birth_year,
+                employee_id, username, password_hash, is_active
+            ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 1)
+            """,
+            (
+                f"manager|{username}",
+                employee_name,
+                gender,
+                self.MANAGER_ROLE,
+                username,
+                password_hash,
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+        return self._row_to_dict(row), password
 
     def close(self) -> None:
         if self._conn:
