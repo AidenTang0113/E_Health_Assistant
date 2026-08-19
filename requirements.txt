@@ -1,9 +1,9 @@
-# E-Health Agent Requirements
+# E-Health Assistant Requirements
 # Python 3.10+
 
 # OCR
 paddleocr>=2.7.0
-paddlepaddle>=2.5.0
+paddlepaddle==3.2.1  # 锁定版本！3.3.1 有 oneDNN PIR bug (ConvertPirAttribute2RuntimeAttribute)
 Pillow>=10.0.0
 
 # PDF processing
@@ -13,14 +13,8 @@ PyMuPDF>=1.23.0
 openai>=1.12.0
 httpx>=0.27.0
 
-# Database (built-in, no extra dep needed)
-# sqlite3 is part of Python standard library
-
-# CLI
-# argparse is part of Python standard library
-
-# Web UI
-streamlit>=1.36.0
-
 # Utils
 dataclasses>=0.0; python_version < "3.10"
+
+# API Encryption / Decryption
+pywin32
