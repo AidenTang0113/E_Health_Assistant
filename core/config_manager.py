@@ -35,8 +35,9 @@ DEFAULTS = {
     "mode": "api",              # "api" = 第三方 API, "local" = 本地模型
     "api_key": "",              # 加密存储
     "base_url": "",             # 明文
-    "model": "",                # 明文
+    "api_model": "",            # 第三方 API 模型名
     "local_url": "http://localhost:1234/v1",  # 本地模型地址
+    "local_model": "",          # 本地模型名
 }
 
 
@@ -151,8 +152,9 @@ def load_config() -> dict:
 
         config["mode"] = saved.get("mode", DEFAULTS["mode"])
         config["base_url"] = saved.get("base_url", "")
-        config["model"] = saved.get("model", "")
+        config["api_model"] = saved.get("api_model", saved.get("model", ""))
         config["local_url"] = saved.get("local_url", DEFAULTS["local_url"])
+        config["local_model"] = saved.get("local_model", "")
 
         # 解密 API Key
         encrypted_key = saved.get("api_key", "")
@@ -184,8 +186,9 @@ def save_config(config: dict) -> bool:
             "mode": config.get("mode", "api"),
             "api_key": _encrypt(config.get("api_key", "")),
             "base_url": config.get("base_url", ""),
-            "model": config.get("model", ""),
+            "api_model": config.get("api_model", ""),
             "local_url": config.get("local_url", DEFAULTS["local_url"]),
+            "local_model": config.get("local_model", ""),
         }
 
         with open(_CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -215,14 +218,14 @@ def get_llm_config() -> dict:
         return {
             "api_key": "",
             "base_url": config["local_url"],
-            "model": config["model"] or "qwen2.5-7b-instruct",
+            "model": config["local_model"] or "qwen2.5-7b-instruct",
             "mode": "local",
         }
     else:
         return {
             "api_key": config["api_key"],
             "base_url": config["base_url"],
-            "model": config["model"],
+            "model": config["api_model"],
             "mode": "api",
         }
 
@@ -242,7 +245,7 @@ def get_status_text() -> str:
 
     if config["mode"] == "local":
         url = config["local_url"]
-        model = config["model"] or "未指定"
+        model = config["local_model"] or "未指定"
         return f"本地模型 | {url} | {model}"
 
     if not config["api_key"]:
@@ -250,5 +253,5 @@ def get_status_text() -> str:
 
     key_preview = config["api_key"][:8] + "..." if len(config["api_key"]) > 8 else "***"
     url = config["base_url"] or "默认"
-    model = config["model"] or "默认"
+    model = config["api_model"] or "默认"
     return f"API | {url} | {model} | {key_preview}"

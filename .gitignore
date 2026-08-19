@@ -1,1 +1,24 @@
 /.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Data (contains user health data, credentials, API keys)
+data/users.db
+data/users.db-wal
+data/users.db-shm
+data/health.db
+data/health.db-wal
+data/health.db-shm
+data/config.json
+data/app.log
+
+# Batch test artifacts
+batch_test/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

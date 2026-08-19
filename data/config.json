@@ -1,7 +1,0 @@
-{
-  "mode": "local",
-  "api_key": "AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA2zVnmVEyeEOC42i8M8cKKgAAAAAuAAAARQAtAEgAZQBhAGwAdABoACAAQQBnAGUAbgB0ACAAQQBQAEkAIABLAGUAeQAAABBmAAAAAQAAIAAAAEfVhLYsE9tTzuwIosJG9ti0X0+EtlXabPLy8nBRWNJ3AAAAAA6AAAAAAgAAIAAAAHk/U8Xdj9paK+Zlhi2Ta/p/jpRAdVU5jB2cnKQFjzRBQAAAADjrabS2wV/uxPW6e1olAcWyMU/7vtTCDy3luzOitXEn8ElGdCWbTAOmKiNRD7XuxjpJlE7QTALIDQCPrD4hgN5AAAAAZk1dxQLJ45Y8O+w2P7/nxzA8O7EBg+jNgw0+GzxMgkXyS2Kx4K3CzMbuDdEgEhYtmxxlFeAZn1DpM7xiRFdSpQ==",
-  "base_url": "https://deepkey.top/v1",
-  "model": "gpt-5.4-mini",
-  "local_url": "http://localhost:1234/v1"
-}

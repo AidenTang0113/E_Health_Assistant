@@ -9,16 +9,16 @@
 pip install -r requirements.txt
 
 # 运行完整测试（使用模拟数据，无需 LM Studio）
-python cli_demo.py --test full
+python cli_test.py --test full
 
 # 测试各模块
-python cli_demo.py --test database
-python cli_demo.py --test llm
-python cli_demo.py --test parse
+python cli_test.py --test database
+python cli_test.py --test llm
+python cli_test.py --test parse
 
 # 使用真实图片测试
-python cli_demo.py --test ocr --image path/to/report.jpg
-python cli_demo.py --test full --image path/to/report.jpg
+python cli_test.py --test ocr --image path/to/report.jpg
+python cli_test.py --test full --image path/to/report.jpg
 ```
 
 ## 项目结构

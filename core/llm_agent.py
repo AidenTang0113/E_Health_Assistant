@@ -175,13 +175,13 @@ class LLMAgent:
             self.base_url = "https://api.openai.com/v1"
             self.model_name = model_name or "gpt-4o-mini"
             self.backend = "openai"
-        elif self._api_key and base_url:
-            # 有 API key + 自定义地址 → 兼容模式（如 Azure、代理等）
+        elif base_url and (self._api_key or "localhost" not in base_url):
+            # 有自定义地址 + (有 key 或非本地地址) → OpenAI 兼容模式
             self.base_url = base_url
             self.model_name = model_name or "gpt-4o-mini"
             self.backend = "openai"
         else:
-            # 无 API key → LM Studio 模式
+            # 无 API key 且地址为本地 → LM Studio 模式
             self.base_url = base_url or "http://localhost:1234/v1"
             self.model_name = model_name or "local-model"
             self.backend = "lmstudio"

@@ -86,8 +86,8 @@ class UserDatabase:
             )
             conn.commit()
         conn.execute(
-            "UPDATE users SET role = ? WHERE username = ? OR role = ?",
-            (self.HR_ROLE, self.ADMIN_USERNAME, "admin"),
+            "UPDATE users SET role = ? WHERE employee_key = ? OR role = ?",
+            (self.HR_ROLE, self.ADMIN_EMPLOYEE_KEY, "admin"),
         )
         conn.commit()
 
@@ -132,46 +132,35 @@ class UserDatabase:
 
     def _ensure_admin_account(self) -> None:
         conn = self._get_conn()
-        password_hash = self._hash_password(self.ADMIN_PASSWORD)
+        # 按 employee_key 查找 admin（username 可能被用户修改过）
         row = conn.execute(
-            "SELECT id FROM users WHERE username = ?",
-            (self.ADMIN_USERNAME,),
+            "SELECT id FROM users WHERE employee_key = ?",
+            (self.ADMIN_EMPLOYEE_KEY,),
         ).fetchone()
         if row:
+            # admin 已存在，仅确保角色正确，不覆盖密码
             conn.execute(
-                """
-                UPDATE users
-                SET employee_key = ?, employee_name = ?, gender = ?, role = ?,
-                    birth_year = NULL, employee_id = NULL, password_hash = ?,
-                    is_active = 1,
-                    updated_at = datetime('now', 'localtime')
-                WHERE id = ?
-                """,
-                (
-                    self.ADMIN_EMPLOYEE_KEY,
-                    self.ADMIN_USERNAME,
-                    "admin",
-                    self.HR_ROLE,
-                    password_hash,
-                    row["id"],
-                ),
+                "UPDATE users SET role = ?, is_active = 1 WHERE id = ?",
+                (self.HR_ROLE, row["id"]),
             )
-        else:
-            conn.execute(
-                """
-                INSERT INTO users (
-                    employee_key, employee_name, gender, role, birth_year,
-                    employee_id, username, password_hash, is_active
-                ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 1)
-                """,
-                (
-                    self.ADMIN_EMPLOYEE_KEY,
-                    self.ADMIN_USERNAME,
-                    "admin",
-                    self.HR_ROLE,
-                    self.ADMIN_USERNAME,
-                    password_hash,
-                ),
+            conn.commit()
+            return
+        password_hash = self._hash_password(self.ADMIN_PASSWORD)
+        conn.execute(
+            """
+            INSERT INTO users (
+                employee_key, employee_name, gender, role, birth_year,
+                employee_id, username, password_hash, is_active
+            ) VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 1)
+            """,
+            (
+                self.ADMIN_EMPLOYEE_KEY,
+                self.ADMIN_USERNAME,
+                "admin",
+                self.HR_ROLE,
+                self.ADMIN_USERNAME,
+                password_hash,
+            ),
             )
         conn.commit()
 
@@ -433,7 +422,7 @@ class UserDatabase:
     ) -> tuple[bool, str]:
         """
         更新用户资料（用户名/密码/出生年）。
-        修改密码需验证旧密码，管理员不得通过此接口修改。
+        修改密码需验证旧密码。
 
         Returns:
             (success, message)
@@ -444,9 +433,6 @@ class UserDatabase:
         ).fetchone()
         if not user:
             return False, "账号不存在"
-        if user["role"] == self.HR_ROLE:
-            return False, "管理员账号不允许自助修改"
-
         # 新用户名冲突检查
         if new_username and new_username != username:
             existing = conn.execute(
