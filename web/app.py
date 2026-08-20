@@ -41,18 +41,11 @@ def main() -> None:
         <style>
         /* 紧凑布局 */
         .block-container {
-            padding-top: 1.5rem;
+            padding-top: 1rem;
             padding-bottom: 2rem;
             max-width: 1200px;
         }
-        /* 表格字体 */
-        .stDataFrame {
-            font-size: 0.85rem;
-        }
-        /* 侧边栏 */
-        .stSidebar > div:first-child {
-            padding-top: 1.5rem;
-        }
+        .stDataFrame { font-size: 0.85rem; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -61,7 +54,7 @@ def main() -> None:
     init_session_state()
 
     if not is_logged_in():
-        from web.pages.login import render_login
+        from web.views.login import render_login
         render_login()
     else:
         from web.layout import render_layout

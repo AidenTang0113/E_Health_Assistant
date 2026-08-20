@@ -18,8 +18,8 @@ from web.state import (
 from web.config_manager import get_status_text
 
 
-def render_sidebar() -> str | None:
-    """渲染侧边栏，返回选中的页面标识。"""
+def _render_sidebar() -> str:
+    """侧边栏：用户信息 + 系统状态 + 页面导航 + 退出按钮。返回选中的页面标识。"""
     user = current_user()
     role = current_role()
 
@@ -52,13 +52,11 @@ def render_sidebar() -> str | None:
 
         st.divider()
 
-        # 导航菜单
+        # 页面导航
         if is_employee():
-            # 员工只能看个人页面
             nav = st.radio(
-                "导航",
-                ["📋 我的健康",
-                 "⚙️ 账号设置"],
+                "功能导航",
+                ["📋 我的健康", "⚙️ 账号设置"],
                 label_visibility="collapsed",
             )
             page_map = {
@@ -66,7 +64,6 @@ def render_sidebar() -> str | None:
                 "⚙️ 账号设置": "account",
             }
         else:
-            # HR / 经理
             nav_options = [
                 "📊 总体查看",
                 "👥 个人查看",
@@ -77,7 +74,7 @@ def render_sidebar() -> str | None:
                 nav_options.append("🔧 系统设置")
 
             nav = st.radio(
-                "导航",
+                "功能导航",
                 nav_options,
                 label_visibility="collapsed",
             )
@@ -100,29 +97,28 @@ def render_sidebar() -> str | None:
 
 
 def render_layout() -> None:
-    """主布局入口。"""
-    page = render_sidebar()
+    """主布局入口：侧边栏导航 + 内容区渲染。"""
+    page = _render_sidebar()
 
     if page == "overview":
-        from web.pages.overview import render_overview
+        from web.views.overview import render_overview
         render_overview()
     elif page == "personal":
-        from web.pages.personal import render_personal
+        from web.views.personal import render_personal
         render_personal()
     elif page == "reports":
-        from web.pages.reports import render_reports
+        from web.views.reports import render_reports
         render_reports()
     elif page == "account":
-        from web.pages.account import render_account
+        from web.views.account import render_account
         render_account()
     elif page == "settings":
-        from web.pages.settings import render_settings
+        from web.views.settings import render_settings
         render_settings()
     elif page == "home":
-        # HR/经理首页默认显示总体查看
         if can_view_all():
-            from web.pages.overview import render_overview
+            from web.views.overview import render_overview
             render_overview()
         else:
-            from web.pages.personal import render_personal
+            from web.views.personal import render_personal
             render_personal()
