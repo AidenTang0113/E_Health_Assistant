@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -285,25 +286,35 @@ def init_mock_database(db) -> None:
         db: HealthDatabase 实例
     """
     reports = get_mock_reports()
+    from core.user_database import UserDatabase
 
-    for emp_info in MOCK_EMPLOYEES:
-        name = emp_info["name"]
-        gender = emp_info["gender"]
-        birth_year = emp_info["birth_year"]
+    user_db = UserDatabase(str(Path(__file__).resolve().parent.parent / "data" / "users.db"))
 
-        # 创建员工
-        emp_id = db.get_or_create_employee(name, gender, birth_year)
+    try:
+        for emp_info in MOCK_EMPLOYEES:
+            name = emp_info["name"]
+            gender = emp_info["gender"]
+            birth_year = emp_info["birth_year"]
 
-        # 导入3年报告
-        for report in reports.get(name, []):
-            db.save_report(emp_id, report)
+            # 创建员工
+            emp_id = db.get_or_create_employee(name, gender, birth_year)
+            user_db.ensure_employee_account(
+                {"name": name, "gender": gender, "birth_year": birth_year},
+                employee_id=emp_id,
+            )
 
-        logger.info(f"模拟数据导入: {name} (ID={emp_id}), {len(reports.get(name, []))} 份报告")
+            # 导入3年报告
+            for report in reports.get(name, []):
+                db.save_report(emp_id, report)
 
-    logger.info(
-        f"模拟数据导入完成: {len(MOCK_EMPLOYEES)} 名员工, "
-        f"共 {sum(len(v) for v in reports.values())} 份报告"
-    )
+            logger.info(f"模拟数据导入: {name} (ID={emp_id}), {len(reports.get(name, []))} 份报告")
+
+        logger.info(
+            f"模拟数据导入完成: {len(MOCK_EMPLOYEES)} 名员工, "
+            f"共 {sum(len(v) for v in reports.values())} 份报告"
+        )
+    finally:
+        user_db.close()
 
 
 def get_mock_ocr_text() -> List[str]:

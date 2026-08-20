@@ -374,6 +374,84 @@ class ReportParser:
         )
         return result
 
+    def parse_with_llm(
+        self,
+        ocr_results: List[str],
+        llm_agent=None,
+    ) -> Dict[str, Any]:
+        """
+        正则解析 + LLM 辅助解析的融合方案
+
+        策略：
+        1. 先用正则解析（快速、免费）
+        2. 如果提供了 llm_agent 且 LLM 可用，同时让 LLM 解析
+        3. 以正则结果为基础，用 LLM 结果补全正则遗漏的指标
+        4. 对于两者都提取到的指标，优先信任正则结果
+
+        Args:
+            ocr_results: OCR 文本行列表
+            llm_agent: LLMAgent 实例（可选）
+
+        Returns:
+            结构化报告字典，额外包含 _parse_source 字段
+        """
+        # Step 1: 正则解析
+        regex_result = self.parse(ocr_results)
+        regex_count = len(regex_result.get("indicators", {}))
+
+        # 如果没有 LLM agent 或 Mock 模式，直接返回正则结果
+        if llm_agent is None or llm_agent.mock_mode:
+            regex_result["_parse_source"] = "regex"
+            return regex_result
+
+        # Step 2: LLM 解析
+        logger.info("LLM 辅助解析中...")
+        llm_result = llm_agent.parse_report_with_llm(ocr_results)
+        llm_count = len(llm_result.get("indicators", {}))
+
+        # Step 3: 合并结果
+        merged = dict(regex_result)  # 以正则结果为基础
+        merged_indicators = dict(regex_result.get("indicators", {}))
+
+        # 用 LLM 结果补全正则遗漏的指标
+        llm_indicators = llm_result.get("indicators", {})
+        new_from_llm = 0
+        for name, info in llm_indicators.items():
+            if name not in merged_indicators:
+                # 补全 LLM 发现的额外指标
+                merged_indicators[name] = info
+                new_from_llm += 1
+            else:
+                # 正则已提取的指标，补充缺失字段
+                existing = merged_indicators[name]
+                if not existing.get("ref_range") and info.get("ref_range"):
+                    existing["ref_range"] = info["ref_range"]
+                if not existing.get("abnormal_type") and info.get("abnormal_type"):
+                    existing["abnormal_type"] = info["abnormal_type"]
+
+        # 用 LLM 补全基本信息（正则提取失败时）
+        if not merged.get("name") and llm_result.get("name"):
+            merged["name"] = llm_result["name"]
+        if not merged.get("gender") and llm_result.get("gender"):
+            merged["gender"] = llm_result["gender"]
+        if not merged.get("age") and llm_result.get("age"):
+            merged["age"] = llm_result["age"]
+        if not merged.get("report_date") and llm_result.get("report_date"):
+            merged["report_date"] = llm_result["report_date"]
+
+        merged["indicators"] = merged_indicators
+        merged["_parse_source"] = (
+            f"regex+llm (正则{regex_count}+LLM补充{new_from_llm}"
+            f"=总{len(merged_indicators)})"
+        )
+
+        logger.info(
+            f"融合解析完成: 正则{regex_count}项, "
+            f"LLM补充{new_from_llm}项, "
+            f"合计{len(merged_indicators)}项指标"
+        )
+        return merged
+
     def _extract_name(self, lines: List[str]) -> Optional[str]:
         """提取姓名"""
         for line in lines:

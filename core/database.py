@@ -410,6 +410,14 @@ class HealthDatabase:
 
         return "fluctuating"
 
+    def reset_database(self) -> None:
+        """清空所有数据（保留表结构）。"""
+        conn = self._get_conn()
+        conn.execute("DELETE FROM health_records")
+        conn.execute("DELETE FROM employees")
+        conn.commit()
+        logger.info("数据库已清空: health_records + employees")
+
     # ------------------------------------------------------------------
     #  关闭
     # ------------------------------------------------------------------
