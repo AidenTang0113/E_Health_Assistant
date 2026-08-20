@@ -280,6 +280,38 @@ details.stExpander > summary {
     box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.2);
 }
 
+/* ====== 员工卡片 ====== */
+/* 所有 secondary kind 的 button 渲染为卡片 */
+div[data-testid="stButton"] > button[kind="secondary"] {
+    background: var(--eh-card-bg) !important;
+    border: 1px solid var(--eh-border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04) !important;
+    padding: 20px !important;
+    text-align: left !important;
+    height: auto !important;
+    min-height: 140px !important;
+    line-height: 1.8 !important;
+    transition: box-shadow 0.2s, transform 0.15s !important;
+    white-space: pre-line !important;
+}
+div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+    transform: translateY(-2px) !important;
+}
+div[data-testid="stButton"] > button[kind="secondary"] p {
+    font-size: 0.82rem !important;
+    color: var(--eh-text-muted) !important;
+    margin: 2px 0 !important;
+    text-align: left !important;
+}
+div[data-testid="stButton"] > button[kind="secondary"] p:first-child {
+    font-size: 1.15rem !important;
+    font-weight: 600 !important;
+    color: var(--eh-text) !important;
+    margin-bottom: 10px !important;
+}
+
 /* ====== 登录页 ====== */
 .login-header {
     text-align: center;

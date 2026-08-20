@@ -32,21 +32,109 @@ def render_personal() -> None:
         if not employee:
             st.warning("未找到员工档案")
             return
+        _render_employee_detail(db, employee)
     else:
-        # HR/经理选择员工
-        employees = db.get_all_employees()
-        if not employees:
-            st.info("数据库为空，请先导入报告。")
-            return
+        # HR/经理：搜索栏 + 员工卡片选择
+        _render_employee_picker(db)
 
-        emp_options = {f"{e['name']} ({e['gender']}, ID:{e['id']})": e["id"] for e in employees}
-        selected_label = st.selectbox("选择员工", list(emp_options.keys()))
-        employee_id = emp_options[selected_label]
-        employee = db.get_employee(employee_id)
-        if not employee:
-            st.warning("未找到员工档案")
-            return
 
+def _render_employee_picker(db) -> None:
+    """HR/经理视角：搜索栏 + 员工卡片网格，点击进入详情。"""
+    employees = db.get_all_employees()
+    if not employees:
+        st.info("数据库为空，请先导入报告。")
+        return
+
+    # 如果已选中员工，直接展示详情
+    selected_id = st.session_state.get("personal_selected_emp_id")
+    if selected_id:
+        employee = db.get_employee(selected_id)
+        if employee:
+            # 顶部返回按钮
+            if st.button("← 返回员工列表", type="primary", use_container_width=False):
+                st.session_state["personal_selected_emp_id"] = None
+                st.rerun()
+            _render_employee_detail(db, employee)
+            return
+        else:
+            st.session_state["personal_selected_emp_id"] = None
+
+    # 搜索栏
+    search_query = st.text_input(
+        "🔍 搜索员工",
+        placeholder="输入姓名或性别进行筛选…",
+        key="personal_search",
+    )
+
+    # 过滤
+    query = search_query.strip().lower()
+    if query:
+        filtered = [
+            e for e in employees
+            if query in e["name"].lower()
+            or query in e.get("gender", "").lower()
+        ]
+    else:
+        filtered = employees
+
+    if not filtered:
+        st.warning("未找到匹配的员工")
+        return
+
+    # 统计每个员工的最新报告概况
+    emp_cards = []
+    for emp in filtered:
+        history = db.get_history(emp["id"])
+        latest_date = history[-1]["report_date"] if history else "无"
+        latest = history[-1] if history else None
+        total_ind = 0
+        abnormal_count = 0
+        if latest:
+            indicators = latest["report_data"].get("indicators", {})
+            total_ind = len(indicators)
+            abnormal_count = sum(1 for v in indicators.values() if v.get("status") == "abnormal")
+        emp_cards.append({
+            "id": emp["id"],
+            "name": emp["name"],
+            "gender": emp.get("gender", "?"),
+            "birth_year": emp.get("birth_year"),
+            "report_count": len(history),
+            "latest_date": latest_date,
+            "total_ind": total_ind,
+            "abnormal_count": abnormal_count,
+        })
+
+    section_header("员工列表", f"共 {len(emp_cards)} 名")
+
+    # 卡片网格 — 每行 3 个
+    cols_per_row = 3
+    for i in range(0, len(emp_cards), cols_per_row):
+        row_cards = emp_cards[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for j, card in enumerate(row_cards):
+            with cols[j]:
+                _render_employee_card(card)
+
+
+def _render_employee_card(card: dict) -> None:
+    """单个员工概览卡片 — button 本身就是卡片，一个完整不可分割的整体。"""
+    has_abnormal = card["abnormal_count"] > 0
+    status_icon = "⚠️" if has_abnormal else "✅"
+
+    # button label 使用 Markdown 排版
+    label = (
+        f"{status_icon} **{card['name']}**  `{card['gender']}`\n\n"
+        f"📋 报告 **{card['report_count']}** 份  |  📅 最新 **{card['latest_date']}**\n\n"
+        f"🔬 指标 **{card['total_ind']}** 项  |  ⚠️ 异常 **{card['abnormal_count']}** 项"
+    )
+
+    if st.button(label, key=f"emp_card_{card['id']}", use_container_width=True):
+        st.session_state["personal_selected_emp_id"] = card["id"]
+        st.rerun()
+
+
+def _render_employee_detail(db, employee: dict) -> None:
+    """展示单个员工的详细信息（原 render_personal 下半部分）。"""
     emp_id = employee["id"]
     emp_name = employee["name"]
     history = db.get_history(emp_id)
@@ -54,7 +142,7 @@ def render_personal() -> None:
     # 员工信息卡片
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("姓名", emp_name)
-    col2.metric("性别", employee["gender"])
+    col2.metric("性别", employee.get("gender", "?"))
     col3.metric("报告数", len(history))
     col4.metric("最新体检", history[-1]["report_date"] if history else "无")
 

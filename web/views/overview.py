@@ -32,17 +32,18 @@ def _render_overview_tab() -> None:
         st.info("数据库为空，请先导入报告数据。")
         return
 
-    # 统计汇总
+    # ── 统计汇总 ──
     total_reports = 0
     total_abnormal = 0
     all_abnormal_items: dict[str, dict] = {}
 
-    emp_stats = []
+    # 每员工最新报告的指标概况（用于柱状图 + 摘要）
+    emp_latest: list[dict] = []  # [{name, gender, date, total, normal, abnormal, abnormal_names}]
+
     for emp in employees:
         history = db.get_history(emp["id"])
         total_reports += len(history)
         latest_date = history[-1]["report_date"] if history else "-"
-        latest_abnormal = 0
 
         for record in history:
             indicators = record["report_data"].get("indicators", {})
@@ -53,30 +54,38 @@ def _render_overview_tab() -> None:
                         all_abnormal_items[name] = {"count": 0, "employees": set()}
                     all_abnormal_items[name]["count"] += 1
                     all_abnormal_items[name]["employees"].add(emp["name"])
-                    if record is history[-1]:
-                        latest_abnormal += 1
 
-        emp_stats.append({
-            "ID": emp["id"],
-            "姓名": emp["name"],
-            "性别": emp["gender"],
-            "报告数": len(history),
-            "最新体检": latest_date,
-            "最新异常": latest_abnormal,
-        })
+        # 最新报告统计
+        if history:
+            latest = history[-1]
+            indicators = latest["report_data"].get("indicators", {})
+            abnormal_names = [n for n, v in indicators.items() if v.get("status") == "abnormal"]
+            emp_latest.append({
+                "name": emp["name"],
+                "gender": emp["gender"],
+                "date": latest_date,
+                "total": len(indicators),
+                "normal": len(indicators) - len(abnormal_names),
+                "abnormal": len(abnormal_names),
+                "abnormal_names": abnormal_names,
+            })
+        else:
+            emp_latest.append({
+                "name": emp["name"], "gender": emp["gender"], "date": "-",
+                "total": 0, "normal": 0, "abnormal": 0, "abnormal_names": [],
+            })
 
-    # 汇总卡片
+    # ── 最上方：最新体检异常概览图 ──
+    _render_abnormal_overview_chart(emp_latest)
+
+    # ── 汇总卡片 ──
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("员工数", len(employees))
     col2.metric("报告总数", total_reports)
     col3.metric("异常记录", total_abnormal)
     col4.metric("异常指标类型", len(all_abnormal_items))
 
-    # 员工列表
-    section_header("员工列表", f"共 {len(employees)} 名")
-    st.dataframe(pd.DataFrame(emp_stats), use_container_width=True, hide_index=True)
-
-    # 健康摘要
+    # ── 健康摘要 ──
     section_header("健康摘要", "按员工展开查看最新报告详情")
     for emp in employees:
         history = db.get_history(emp["id"])
@@ -118,7 +127,7 @@ def _render_overview_tab() -> None:
             else:
                 st.success("所有指标正常")
 
-    # 异常指标排行
+    # ── 异常指标排行 ──
     if all_abnormal_items:
         section_header("异常指标排行", "按出现次数降序")
         rank_rows = []
@@ -130,144 +139,82 @@ def _render_overview_tab() -> None:
             })
         st.dataframe(pd.DataFrame(rank_rows), use_container_width=True, hide_index=True)
 
-    # 关键趋势图：展示异常最多的指标全员对比
-    if all_abnormal_items:
-        _render_overview_trend_chart(db, employees, all_abnormal_items)
 
+def _render_abnormal_overview_chart(emp_latest: list[dict]) -> None:
+    """最新体检异常概览：分组柱状图，一目了然看到谁有异常、多少项。
 
-def _render_overview_trend_chart(db, employees: list, all_abnormal_items: dict) -> None:
-    """全员概览页底部：最关键指标的趋势对比图。"""
-    from web.components import render_trend_chart
-
-    # 按异常次数排序，取最多的几个指标
-    top_indicators = sorted(
-        all_abnormal_items.items(), key=lambda x: x[1]["count"], reverse=True
-    )
-    indicator_names = [name for name, _ in top_indicators[:10]]
-
-    section_header("关键指标趋势", "选择指标查看全员历年变化")
-
-    selected_ind = st.selectbox("选择指标", indicator_names, key="overview_trend_ind")
-    if not selected_ind:
-        return
-
-    # 收集所有有该指标历史数据的员工
-    emp_options = []
-    emp_data_map = {}
-    for emp in employees:
-        history = db.get_history(emp["id"])
-        ind_values = []
-        abnormal_flags = []
-        dates = []
-        ref_range = ""
-        unit = ""
-        for record in history:
-            indicators = record["report_data"].get("indicators", {})
-            info = indicators.get(selected_ind)
-            if info and info.get("value") is not None:
-                dates.append(record["report_date"])
-                ind_values.append(info.get("value"))
-                abnormal_flags.append(info.get("status") == "abnormal")
-                if not ref_range:
-                    ref_range = info.get("ref_range", "")
-                if not unit:
-                    unit = info.get("unit", "")
-        if ind_values:
-            label = f"{emp['name']} ({emp['gender']})"
-            emp_options.append(label)
-            emp_data_map[label] = {
-                "dates": dates,
-                "values": ind_values,
-                "abnormal_flags": abnormal_flags,
-                "ref_range": ref_range,
-                "unit": unit,
-            }
-
-    if not emp_options:
-        st.info(f"无 {selected_ind} 的历史数据")
-        return
-
-    # 默认展示所有员工（最多 5 个）
-    default_sel = emp_options[:min(5, len(emp_options))]
-    selected_emps = st.multiselect(
-        "选择员工（最多 5 名）",
-        emp_options,
-        default=default_sel,
-        key="overview_trend_emp",
-        max_selections=5,
-    )
-
-    if not selected_emps:
-        return
-
-    # 多员工折线图
+    每个员工一组柱：正常项（绿）+ 异常项（红）堆叠，hover 显示异常指标名。
+    """
     import plotly.graph_objects as go
 
+    # 过滤掉无报告的员工
+    has_data = [e for e in emp_latest if e["total"] > 0]
+    if not has_data:
+        return
+
+    names = [f"{e['name']}\n{e['gender']}" for e in has_data]
+    normal_vals = [e["normal"] for e in has_data]
+    abnormal_vals = [e["abnormal"] for e in has_data]
+    # hover 文本
+    hover_normal = [
+        f"{e['name']} ({e['gender']})<br>正常: {e['normal']} 项<br>异常: {e['abnormal']} 项<br>日期: {e['date']}<extra></extra>"
+        for e in has_data
+    ]
+    hover_abnormal = [
+        f"{e['name']} ({e['gender']})<br>⚠️ 异常指标: {', '.join(e['abnormal_names']) if e['abnormal_names'] else '无'}<br>日期: {e['date']}<extra></extra>"
+        for e in has_data
+    ]
+
     fig = go.Figure()
-    colors = ["#0891b2", "#f59e0b", "#6366f1", "#10b981", "#ef4444"]
 
-    # 参考范围色带（取第一个员工的）
-    first_data = emp_data_map[selected_emps[0]]
-    from web.components import _parse_ref_range
-    lo, hi = _parse_ref_range(first_data["ref_range"])
-    if lo is not None and hi is not None:
-        fig.add_hrect(
-            y0=lo, y1=hi,
-            fillcolor="rgba(16, 185, 129, 0.10)",
-            layer="below", line_width=0,
-            annotation_text=f"正常范围 {lo}-{hi}",
-            annotation_position="top left",
-            annotation_font_size=10,
-            annotation_font_color="#10b981",
-        )
-    if lo is not None:
-        fig.add_hline(y=lo, line_dash="dash", line_color="#10b981", line_width=1, opacity=0.5)
-    if hi is not None:
-        fig.add_hline(y=hi, line_dash="dash", line_color="#10b981", line_width=1, opacity=0.5)
+    # 正常 — 绿色底柱
+    fig.add_trace(go.Bar(
+        x=names, y=normal_vals,
+        name="正常",
+        marker_color="#10b981",
+        hovertemplate=hover_normal,
+        text=[str(v) for v in normal_vals],
+        textposition="inside",
+        textfont=dict(color="white", size=12),
+    ))
 
-    for idx, label in enumerate(selected_emps):
-        d = emp_data_map[label]
-        color = colors[idx % len(colors)]
+    # 异常 — 红色顶柱（堆叠）
+    fig.add_trace(go.Bar(
+        x=names, y=abnormal_vals,
+        name="异常",
+        marker_color="#ef4444",
+        hovertemplate=hover_abnormal,
+        text=[str(v) if v > 0 else "" for v in abnormal_vals],
+        textposition="inside",
+        textfont=dict(color="white", size=12),
+    ))
 
-        # 正常点连线
-        normal_x = [d["dates"][i] for i in range(len(d["dates"])) if not d["abnormal_flags"][i]]
-        normal_y = [d["values"][i] for i in range(len(d["dates"])) if not d["abnormal_flags"][i]]
-        if normal_x:
-            fig.add_trace(go.Scatter(
-                x=normal_x, y=normal_y,
-                mode="lines+markers",
-                name=label,
-                line=dict(color=color, width=2),
-                marker=dict(size=7, color=color),
-                hovertemplate=f"<b>{label}</b><br>日期: %{{x}}<br>数值: %{{y}} {d['unit']}<br><extra></extra>",
-                connectgaps=True,
-            ))
-
-        # 异常点
-        abnormal_x = [d["dates"][i] for i in range(len(d["dates"])) if d["abnormal_flags"][i]]
-        abnormal_y = [d["values"][i] for i in range(len(d["dates"])) if d["abnormal_flags"][i]]
-        if abnormal_x:
-            fig.add_trace(go.Scatter(
-                x=abnormal_x, y=abnormal_y,
-                mode="markers",
-                name=f"{label} ⚠️",
-                marker=dict(size=10, color="#ef4444", symbol="circle",
-                           line=dict(width=2, color="white")),
-                hovertemplate=f"<b>{label} ⚠️ 异常</b><br>日期: %{{x}}<br>数值: %{{y}} {d['unit']}<br>参考范围: {d['ref_range']}<br><extra></extra>",
-            ))
-
-    unit_str = f" ({first_data['unit']})" if first_data['unit'] else ""
     fig.update_layout(
-        title=dict(text=f"{selected_ind}{unit_str}", font=dict(size=14, color="#64748b")),
-        xaxis=dict(tickfont=dict(size=11, color="#94a3b8"), gridcolor="#e2e8f0", showgrid=True),
-        yaxis=dict(tickfont=dict(size=11, color="#94a3b8"), gridcolor="#e2e8f0", showgrid=True),
+        title=dict(
+            text="最新体检异常概览",
+            font=dict(size=15, color="#0e7490"),
+        ),
+        barmode="stack",
+        xaxis=dict(
+            tickfont=dict(size=12, color="#64748b"),
+            showgrid=False,
+        ),
+        yaxis=dict(
+            title="指标项数",
+            title_font=dict(size=11, color="#94a3b8"),
+            tickfont=dict(size=11, color="#94a3b8"),
+            gridcolor="#e2e8f0",
+            showgrid=True,
+        ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family="system-ui, -apple-system, sans-serif", color="#64748b"),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(l=40, r=20, t=50, b=20),
-        height=420,
+        margin=dict(l=40, r=20, t=60, b=20),
+        height=400,
+        showlegend=True,
     )
+
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
