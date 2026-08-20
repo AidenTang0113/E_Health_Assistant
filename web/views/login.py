@@ -14,20 +14,6 @@ def render_login() -> None:
 
     st.markdown(
         """
-        <style>
-        .login-header {
-            text-align: center;
-            padding: 2rem 0 1rem;
-        }
-        .login-header h1 {
-            font-size: 2rem;
-            margin-bottom: 0.3rem;
-        }
-        .login-header p {
-            color: #888;
-            font-size: 0.9rem;
-        }
-        </style>
         <div class="login-header">
             <h1>🏥 E-Health Agent</h1>
             <p>AI 体检报告智能解读系统</p>
@@ -57,7 +43,7 @@ def render_login() -> None:
                         st.error("用户名或密码错误")
 
     st.markdown(
-        "<p style='text-align:center; color:#aaa; margin-top:2rem;'>"
+        "<p style='text-align:center; color:#94a3b8; margin-top:2rem; font-size:0.85rem;'>"
         "首次启动默认管理员: admin / 123456"
         "</p>",
         unsafe_allow_html=True,
