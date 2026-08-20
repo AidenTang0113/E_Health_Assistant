@@ -7,14 +7,7 @@ __pycache__/
 *.pyo
 
 # Data (contains user health data, credentials, API keys)
-data/users.db
-data/users.db-wal
-data/users.db-shm
-data/health.db
-data/health.db-wal
-data/health.db-shm
-data/config.json
-data/app.log
+/data
 
 # Batch test artifacts
 batch_test/
@@ -24,5 +17,6 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
+# Markdown
 /TODO.md
 /data/
