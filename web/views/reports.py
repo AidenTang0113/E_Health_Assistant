@@ -233,10 +233,12 @@ def _render_batch_import() -> None:
         success, fail = 0, 0
         results = []
 
-        progress = st.progress(0, desc="准备导入...")
+        progress_text = st.empty()
+        progress = st.progress(0)
 
         for i, uploaded in enumerate(uploaded_files):
-            progress.progress(i / len(uploaded_files), desc=f"处理 {uploaded.name}...")
+            progress_text.text(f"处理 {uploaded.name}...")
+            progress.progress(i / len(uploaded_files))
 
             # 保存临时文件
             tmp_path = PROJECT_ROOT / "data" / f"tmp_batch_{uploaded.name}"
@@ -303,8 +305,10 @@ def _render_batch_import() -> None:
                 if tmp_path.exists():
                     tmp_path.unlink()
 
-        progress.progress(1.0, desc="导入完成")
+        progress_text.text("导入完成")
+        progress.progress(1.0)
         progress.empty()
+        progress_text.empty()
 
         # 结果汇总
         col1, col2, col3 = st.columns(3)

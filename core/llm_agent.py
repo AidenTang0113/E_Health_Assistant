@@ -169,6 +169,15 @@ class LLMAgent:
         self._client = None
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
 
+        # 规范 base_url：OpenAI SDK 要求以 /v1 结尾
+        def _normalize_base_url(url: str) -> str:
+            if not url:
+                return url
+            url = url.rstrip("/")
+            if not url.endswith("/v1") and not url.endswith("/v{version}"):
+                url = url + "/v1"
+            return url
+
         # 自动判断后端类型
         if self._api_key and not base_url:
             # 有 API key → OpenAI 模式
@@ -177,7 +186,7 @@ class LLMAgent:
             self.backend = "openai"
         elif base_url and (self._api_key or "localhost" not in base_url):
             # 有自定义地址 + (有 key 或非本地地址) → OpenAI 兼容模式
-            self.base_url = base_url
+            self.base_url = _normalize_base_url(base_url)
             self.model_name = model_name or "gpt-4o-mini"
             self.backend = "openai"
         else:
@@ -506,6 +515,13 @@ class LLMAgent:
                 timeout=30,
             )
 
+            # 防御性检查：确保返回的是标准 ChatCompletion 对象
+            if not hasattr(response, 'choices') or not response.choices:
+                raise ValueError(
+                    f"LLM 返回了非标准响应 (type={type(response).__name__}). "
+                    f"请检查 base_url 是否以 /v1 结尾，当前: {self.base_url}"
+                )
+
             raw_output = response.choices[0].message.content.strip()
 
             # 解析 JSON（尝试提取 JSON 块）
@@ -720,6 +736,13 @@ class LLMAgent:
                 max_tokens=2048,
                 timeout=60,
             )
+
+            # 防御性检查
+            if not hasattr(response, 'choices') or not response.choices:
+                raise ValueError(
+                    f"LLM 返回了非标准响应 (type={type(response).__name__}). "
+                    f"请检查 base_url 是否以 /v1 结尾，当前: {self.base_url}"
+                )
 
             raw_output = response.choices[0].message.content.strip()
             result = self._parse_llm_output(raw_output)

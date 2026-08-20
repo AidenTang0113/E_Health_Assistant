@@ -382,10 +382,12 @@ def _render_interpret_tab() -> None:
 
     if st.button("🔮 开始解读", type="primary"):
         agent = get_llm_agent()
-        progress = st.progress(0, desc="正在解读...")
+        progress_text = st.empty()
+        progress = st.progress(0)
 
         for i, (emp_name, info, report_date) in enumerate(records):
-            progress.progress((i) / len(records), desc=f"解读 {emp_name}...")
+            progress_text.text(f"解读 {emp_name}...")
+            progress.progress((i) / len(records))
             with st.container():
                 st.markdown("---")
                 section_header(f"{emp_name} ({report_date})")
@@ -437,7 +439,9 @@ def _render_interpret_tab() -> None:
 
                 st.caption(f"📚 {advice.get('knowledge_ref', '无')}")
 
-            progress.progress((i + 1) / len(records), desc=f"已完成 {i + 1}/{len(records)}")
+            progress_text.text(f"已完成 {i + 1}/{len(records)}")
+            progress.progress((i + 1) / len(records))
 
         progress.empty()
+        progress_text.empty()
         st.success("解读完成！")
