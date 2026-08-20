@@ -234,8 +234,14 @@ class UserDatabase:
                 params.append(gender)
             # legacy: 如果 username 和 employee_name 不一致，统一
             if existing["username"] != name and existing["role"] == EMPLOYEE:
-                updates.append("username = ?")
-                params.append(name)
+                # 检查目标用户名是否已被其他账号占用
+                clash = self._conn.execute(
+                    "SELECT id FROM users WHERE username = ? AND id != ?",
+                    (name, existing["id"]),
+                ).fetchone()
+                if not clash:
+                    updates.append("username = ?")
+                    params.append(name)
             if updates:
                 params.append(existing["id"])
                 self._conn.execute(
