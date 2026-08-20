@@ -30,15 +30,12 @@ def _render_sidebar() -> str:
         \n🏷️ {role} | @{user['username']}
         """)
 
-        st.divider()
-
-        # LLM 状态
+        # LLM + 数据库状态（用间距分隔，不用分割线）
         try:
             st.caption(f"🤖 {get_status_text()}")
         except Exception:
             st.caption("🤖 LLM 状态未知")
 
-        # 数据库状态
         try:
             db = get_db()
             employees = db.get_all_employees()
@@ -50,7 +47,7 @@ def _render_sidebar() -> str:
         except Exception:
             st.caption("📊 数据库未初始化")
 
-        st.divider()
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
         # 页面导航
         if is_employee():
@@ -86,9 +83,8 @@ def _render_sidebar() -> str:
                 "🔧 系统设置": "settings",
             }
 
-        st.divider()
+        st.markdown("<div style='height:0.5rem'></div>", unsafe_allow_html=True)
 
-        # 退出登录
         if st.button("🚪 退出登录", use_container_width=True):
             logout()
             st.rerun()

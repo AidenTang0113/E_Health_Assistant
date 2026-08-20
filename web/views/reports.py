@@ -8,10 +8,12 @@ from pathlib import Path
 import streamlit as st
 
 from web.state import get_db, get_user_db, can_view_all, is_hr, PROJECT_ROOT
+from web.components import breadcrumb, section_header
 
 
 def render_reports() -> None:
     """报告管理页面。"""
+    breadcrumb("首页", "报告管理")
     st.title("📁 报告管理")
 
     if not can_view_all():
@@ -129,7 +131,7 @@ def _ocr_import(emp: dict, is_pdf: bool) -> None:
 
 
 def _manual_import(emp: dict) -> None:
-    st.markdown("### 手动输入指标")
+    section_header("手动输入指标")
 
     report_date = st.text_input("报告日期 (YYYY-MM-DD)", "")
     hospital = st.text_input("医院名称", "")
@@ -204,8 +206,7 @@ def _manual_import(emp: dict) -> None:
 
 
 def _render_batch_import() -> None:
-    st.markdown("### 批量导入")
-    st.caption("支持 png/jpg/jpeg/bmp/pdf 格式，文件命名约定: `员工姓名_日期.ext` 或 `员工姓名.ext`")
+    section_header("批量导入", "支持 png/jpg/jpeg/bmp/pdf，文件命名: 员工姓名_日期.ext")
 
     uploaded_files = st.file_uploader(
         "选择多个文件",
@@ -306,7 +307,6 @@ def _render_batch_import() -> None:
         progress.empty()
 
         # 结果汇总
-        st.markdown("---")
         col1, col2, col3 = st.columns(3)
         col1.metric("成功", success)
         col2.metric("失败", fail)

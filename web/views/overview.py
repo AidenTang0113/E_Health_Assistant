@@ -6,10 +6,12 @@ import streamlit as st
 import pandas as pd
 
 from web.state import get_db, get_llm_agent, is_hr, is_manager
+from web.components import breadcrumb, section_header
 
 
 def render_overview() -> None:
     """总体查看页面，含三个 tab。"""
+    breadcrumb("首页", "总体查看")
     st.title("📊 总体查看")
 
     tab1, tab2, tab3 = st.tabs(["全员概览", "全员趋势", "异常指标解读"])
@@ -70,11 +72,12 @@ def _render_overview_tab() -> None:
     col3.metric("异常记录", total_abnormal)
     col4.metric("异常指标类型", len(all_abnormal_items))
 
-    st.subheader("员工列表")
+    # 员工列表
+    section_header("员工列表", f"共 {len(employees)} 名")
     st.dataframe(pd.DataFrame(emp_stats), use_container_width=True, hide_index=True)
 
     # 健康摘要
-    st.subheader("健康摘要")
+    section_header("健康摘要", "按员工展开查看最新报告详情")
     for emp in employees:
         history = db.get_history(emp["id"])
         if not history:
@@ -117,7 +120,7 @@ def _render_overview_tab() -> None:
 
     # 异常指标排行
     if all_abnormal_items:
-        st.subheader("异常指标排行")
+        section_header("异常指标排行", "按出现次数降序")
         rank_rows = []
         for name, data in sorted(all_abnormal_items.items(), key=lambda x: x[1]["count"], reverse=True):
             rank_rows.append({
@@ -209,8 +212,8 @@ def _render_interpret_tab() -> None:
         for i, (emp_name, info, report_date) in enumerate(records):
             progress.progress((i) / len(records), desc=f"解读 {emp_name}...")
             with st.container():
-                st.markdown(f"---")
-                st.subheader(f"{emp_name} ({report_date})")
+                st.markdown("---")
+                section_header(f"{emp_name} ({report_date})")
                 col_a, col_b, col_c = st.columns(3)
                 col_a.metric("指标值", f"{info.get('value')} {info.get('unit', '')}")
                 col_b.metric("参考范围", info.get("ref_range", "未知"))

@@ -27,7 +27,7 @@ import streamlit as st
 from web.state import init_session_state, is_logged_in
 
 
-# ──────────────────────────── 配色体系 ────────────────────────────
+# ──────────────────────────── 配色 + 排版体系 ────────────────────────────
 THEME_CSS = """
 <style>
 /* ====== CSS 变量：明/暗双套 ====== */
@@ -37,6 +37,7 @@ THEME_CSS = """
     --eh-primary-light: #67e8f9;
     --eh-bg: #f8fafc;
     --eh-card-bg: #ffffff;
+    --eh-card-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
     --eh-border: #e2e8f0;
     --eh-text: #1e293b;
     --eh-text-muted: #64748b;
@@ -50,6 +51,7 @@ THEME_CSS = """
     --eh-danger-bg: #fee2e2;
     --eh-sidebar-bg: #ffffff;
     --eh-sidebar-border: #e2e8f0;
+    --eh-radius: 12px;
 }
 
 [data-testid="stAppViewContainer"][data-theme="dark"], .stApp[data-theme="dark"] {
@@ -58,6 +60,7 @@ THEME_CSS = """
     --eh-primary-light: #a5f3fc;
     --eh-bg: #0f172a;
     --eh-card-bg: #1e293b;
+    --eh-card-shadow: 0 1px 3px rgba(0,0,0,0.3);
     --eh-border: #334155;
     --eh-text: #f1f5f9;
     --eh-text-muted: #94a3b8;
@@ -86,21 +89,70 @@ THEME_CSS = """
 }
 
 /* ====== 卡片容器 ====== */
-.stCard, .stContainer > div {
+.eh-card, .stCard {
     background-color: var(--eh-card-bg);
     border: 1px solid var(--eh-border);
-    border-radius: 0.75rem;
-    padding: 1rem;
+    border-radius: var(--eh-radius);
+    box-shadow: var(--eh-card-shadow);
+    padding: 20px;
 }
 
-/* ====== 标题 ====== */
+/* Streamlit container 用作卡片时的样式 */
+div[data-testid="stVerticalBlockBorderWrapper"] > div:has(> div.eh-card-mark) {
+    background-color: var(--eh-card-bg);
+    border: 1px solid var(--eh-border);
+    border-radius: var(--eh-radius);
+    box-shadow: var(--eh-card-shadow);
+    padding: 20px;
+}
+
+/* ====== 标题层级 ====== */
 h1, .stTitle {
     color: var(--eh-primary-dark);
     font-weight: 700;
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
 }
 
 h2, h3, .stHeader {
     color: var(--eh-text);
+    font-weight: 600;
+}
+
+/* 区块标题 */
+.eh-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin: 1.25rem 0 0.75rem;
+}
+.eh-section-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--eh-text);
+}
+.eh-section-sub {
+    color: var(--eh-text-muted);
+    font-size: 0.8rem;
+}
+
+/* ====== 面包屑 ====== */
+.eh-breadcrumb {
+    margin-bottom: 1rem;
+    font-size: 0.82rem;
+    color: var(--eh-text-muted);
+}
+.eh-crumb {
+    color: var(--eh-text-muted);
+}
+.eh-crumb-sep {
+    margin: 0 0.4rem;
+    color: var(--eh-text-muted);
+    opacity: 0.5;
+}
+.eh-crumb-current {
+    color: var(--eh-primary-dark);
     font-weight: 600;
 }
 
@@ -116,6 +168,7 @@ section[data-testid="stSidebar"] {
     background-color: var(--eh-primary);
     border-color: var(--eh-primary);
     color: white;
+    border-radius: 8px;
 }
 .stButton > button[kind="primary"]:hover,
 .stButton > button[data-kind="primary"]:hover {
@@ -123,20 +176,25 @@ section[data-testid="stSidebar"] {
     border-color: var(--eh-primary-dark);
 }
 
-/* ====== Metric 卡片 ====== */
+/* ====== Metric 卡片 — 统一高度 + 大字号 ====== */
 [data-testid="stMetric"] {
     background-color: var(--eh-card-bg);
     border: 1px solid var(--eh-border);
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    border-radius: var(--eh-radius);
+    box-shadow: var(--eh-card-shadow);
+    padding: 16px 20px;
+    height: 100%;
 }
 [data-testid="stMetricLabel"] {
     color: var(--eh-text-muted);
-    font-size: 0.8rem;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 [data-testid="stMetricValue"] {
     color: var(--eh-primary-dark);
     font-weight: 700;
+    font-size: 30px;
 }
 
 /* ====== 数据表格 ====== */
@@ -144,7 +202,7 @@ section[data-testid="stSidebar"] {
     font-size: 0.85rem;
 }
 .stDataFrame table {
-    border-radius: 0.5rem;
+    border-radius: 8px;
     overflow: hidden;
 }
 .stDataFrame thead th {
@@ -156,12 +214,15 @@ section[data-testid="stSidebar"] {
 /* ====== Expander ====== */
 details.stExpander {
     border: 1px solid var(--eh-border);
-    border-radius: 0.5rem;
+    border-radius: var(--eh-radius);
     background-color: var(--eh-card-bg);
+    box-shadow: var(--eh-card-shadow);
+    overflow: hidden;
 }
 details.stExpander > summary {
     color: var(--eh-text);
     font-weight: 500;
+    padding: 0.5rem 0;
 }
 
 /* ====== Tabs ====== */
@@ -170,7 +231,7 @@ details.stExpander > summary {
     border-bottom: 2px solid var(--eh-border);
 }
 .stTabs [data-baseweb="tab"] {
-    border-radius: 0.5rem 0.5rem 0 0;
+    border-radius: 8px 8px 0 0;
     padding: 0.5rem 1rem;
     color: var(--eh-text-muted);
     background-color: transparent;
@@ -183,38 +244,35 @@ details.stExpander > summary {
 }
 
 /* ====== 状态语义色 ====== */
-/* 正常 — 柔和绿 */
 .stSuccess, div[data-testid="stAlertContent"] {
-    border-radius: 0.5rem;
+    border-radius: var(--eh-radius);
 }
 .stSuccess > div {
     background-color: var(--eh-normal-bg) !important;
     border-color: var(--eh-normal) !important;
+    border-radius: var(--eh-radius);
 }
-
-/* 警告 — 琥珀橙 */
 .stWarning > div {
     background-color: var(--eh-abnormal-high-bg) !important;
     border-color: var(--eh-abnormal-high) !important;
+    border-radius: var(--eh-radius);
 }
-
-/* 错误/危险 — 珊瑚红 */
 .stError > div {
     background-color: var(--eh-danger-bg) !important;
     border-color: var(--eh-danger) !important;
+    border-radius: var(--eh-radius);
 }
-
-/* 信息 — 医疗蓝 */
 .stInfo > div {
     background-color: #e0f2fe !important;
     border-color: var(--eh-primary) !important;
+    border-radius: var(--eh-radius);
 }
 
 /* ====== 表单输入框 ====== */
 .stTextInput > div > input,
 .stTextArea > div > textarea {
     border-color: var(--eh-border);
-    border-radius: 0.375rem;
+    border-radius: 8px;
 }
 .stTextInput > div > input:focus,
 .stTextArea > div > textarea:focus {
@@ -222,10 +280,10 @@ details.stExpander > summary {
     box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.2);
 }
 
-/* =====| 登录页 |===== */
+/* ====== 登录页 ====== */
 .login-header {
     text-align: center;
-    padding: 2rem 0 1rem;
+    padding: 2.5rem 0 1.5rem;
 }
 .login-header h1 {
     font-size: 2.2rem;
@@ -247,9 +305,18 @@ details.stExpander > summary {
     border-top-color: var(--eh-primary);
 }
 
-/* ====== 分割线 ====== */
+/* ====== 分割线 — 淡化 ====== */
 hr, .stDivider {
     border-color: var(--eh-border);
+    opacity: 0.5;
+    margin: 0.75rem 0;
+}
+
+/* ====== 侧边栏分割线淡化 ====== */
+section[data-testid="stSidebar"] hr {
+    border-color: var(--eh-border);
+    opacity: 0.4;
+    margin: 0.5rem 0;
 }
 
 /* =====| 暗色模式微调 |===== */
@@ -277,7 +344,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
 
-    # 注入医疗专业配色体系
+    # 注入医疗专业配色 + 排版体系
     st.markdown(THEME_CSS, unsafe_allow_html=True)
 
     init_session_state()

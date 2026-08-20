@@ -6,10 +6,12 @@ import streamlit as st
 
 from web.state import get_db, get_user_db, current_user, is_hr, PROJECT_ROOT
 from web.config_manager import load_config, save_config, get_status_text
+from web.components import breadcrumb, section_header
 
 
 def render_settings() -> None:
     """系统设置页面（仅 HR）。"""
+    breadcrumb("首页", "系统设置")
     st.title("🔧 系统设置")
 
     if not is_hr():
@@ -30,8 +32,6 @@ def _render_llm_config() -> None:
     config = load_config()
 
     st.markdown(f"**当前状态**: {get_status_text()}")
-
-    st.markdown("---")
 
     with st.form("llm_config"):
         mode = st.radio(
@@ -98,7 +98,6 @@ def _render_llm_config() -> None:
                 st.error("保存失败")
 
     # 测试连接
-    st.markdown("---")
     if st.button("🔌 测试连接"):
         _test_connection()
 
@@ -137,7 +136,7 @@ def _test_connection() -> None:
 
 
 def _render_db_management() -> None:
-    st.markdown("### 数据库管理")
+    section_header("数据库管理")
 
     db = get_db()
     employees = db.get_all_employees()
@@ -147,10 +146,7 @@ def _render_db_management() -> None:
     col1.metric("员工数", len(employees))
     col2.metric("报告数", total_reports)
 
-    st.markdown("---")
-
-    st.markdown("#### 🗑️ 清空数据库")
-    st.warning("⚠️ 此操作将删除所有员工和报告数据，不可恢复！")
+    section_header("清空数据库", "⚠️ 此操作将删除所有员工和报告数据，不可恢复！")
 
     with st.form("reset_db"):
         confirm_password = st.text_input("请输入 HR 密码确认", type="password")
@@ -182,7 +178,7 @@ def _render_db_management() -> None:
 
 
 def _render_audit_logs() -> None:
-    st.markdown("### 操作日志")
+    section_header("操作日志", "最近 50 条")
 
     user_db = get_user_db()
     logs = user_db.list_audit_logs(limit=50)

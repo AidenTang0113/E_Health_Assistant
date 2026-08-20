@@ -12,10 +12,12 @@ from web.state import (
     is_employee,
     can_view_all,
 )
+from web.components import breadcrumb, section_header
 
 
 def render_personal() -> None:
     """个人查看页面。"""
+    breadcrumb("首页", "个人查看")
     st.title("👥 个人查看")
 
     db = get_db()
@@ -59,8 +61,6 @@ def render_personal() -> None:
     if employee.get("birth_year"):
         st.caption(f"出生年份: {employee['birth_year']}")
 
-    st.divider()
-
     if not history:
         st.info("该员工暂无体检报告。")
         return
@@ -78,7 +78,7 @@ def render_personal() -> None:
 
 def _render_profile_tab(db, emp_id: int, history: list) -> None:
     """个人档案：历史报告列表 + 最新指标详情。"""
-    st.subheader(f"报告历史（{len(history)} 份）")
+    section_header("报告历史", f"{len(history)} 份")
 
     for i, record in enumerate(history, 1):
         indicators = record["report_data"].get("indicators", {})

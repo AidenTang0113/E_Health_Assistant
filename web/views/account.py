@@ -5,17 +5,19 @@ from __future__ import annotations
 import streamlit as st
 
 from web.state import get_user_db, current_user, is_hr, can_view_all
+from web.components import breadcrumb, section_header
 
 
 def render_account() -> None:
     """账号设置页面。"""
+    breadcrumb("首页", "账号设置")
     st.title("⚙️ 账号设置")
 
     user = current_user()
     user_db = get_user_db()
 
     # 个人资料修改
-    st.subheader("个人资料")
+    section_header("个人资料")
     with st.form("profile_form"):
         current_username = user["username"]
         new_username = st.text_input("用户名", value=current_username)
@@ -66,15 +68,13 @@ def render_account() -> None:
             else:
                 st.error(msg)
 
-    st.divider()
-
     # HR/经理的账号管理
     if can_view_all():
         _render_account_management(user_db)
 
 
 def _render_account_management(user_db) -> None:
-    st.subheader("👥 员工账号管理")
+    section_header("员工账号管理")
 
     users = user_db.list_users()
 
@@ -93,8 +93,7 @@ def _render_account_management(user_db) -> None:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     # 操作
-    st.markdown("---")
-    st.markdown("#### 账号操作")
+    section_header("账号操作")
 
     user_options = {f"{u['username']} ({u['employee_name']})": u for u in users}
     selected_label = st.selectbox("选择账号", list(user_options.keys()))
@@ -104,7 +103,7 @@ def _render_account_management(user_db) -> None:
         st.info("HR 管理员账号不可操作")
         return
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
         if target_user["is_active"]:
@@ -135,8 +134,7 @@ def _render_account_management(user_db) -> None:
 
     # 经理管理（仅 HR）
     if is_hr():
-        st.markdown("---")
-        st.markdown("#### 角色管理")
+        section_header("角色管理")
 
         if target_user["role"] == "employee":
             if st.button("⬆️ 提升为经理"):
@@ -153,8 +151,7 @@ def _render_account_management(user_db) -> None:
 
     # 创建经理账号（仅 HR）
     if is_hr():
-        st.markdown("---")
-        st.markdown("#### 创建经理账号")
+        section_header("创建经理账号")
         with st.form("create_manager"):
             mgr_name = st.text_input("经理姓名")
             mgr_username = st.text_input("用户名")
