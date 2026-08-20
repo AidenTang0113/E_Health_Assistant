@@ -231,7 +231,7 @@ class LLMAgent:
             req = urllib.request.Request(
                 f"{self.base_url}/models", headers=headers
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200:
                     return True
         except Exception:
@@ -251,7 +251,7 @@ class LLMAgent:
                 headers=chat_headers,
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 return resp.status in (200, 201)
         except urllib.error.HTTPError as e:
             # 401/403 说明 key 有问题，但也说明服务在线
@@ -271,6 +271,8 @@ class LLMAgent:
             self._client = OpenAI(
                 base_url=self.base_url,
                 api_key=api_key,
+                timeout=30,        # 连接 + 读取超时 30s
+                max_retries=0,     # 不自动重试，失败立即回退
             )
         except ImportError:
             logger.error("openai 库未安装，请执行: pip install openai")
@@ -501,6 +503,7 @@ class LLMAgent:
                 ],
                 temperature=0.3,
                 max_tokens=2048 if detailed else 1024,
+                timeout=30,
             )
 
             raw_output = response.choices[0].message.content.strip()
@@ -715,6 +718,7 @@ class LLMAgent:
                 ],
                 temperature=0.1,
                 max_tokens=2048,
+                timeout=60,
             )
 
             raw_output = response.choices[0].message.content.strip()

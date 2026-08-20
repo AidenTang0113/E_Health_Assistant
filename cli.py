@@ -198,11 +198,6 @@ def _show_status() -> bool:
 def func_overview() -> None:
     print_header("系统总览")
 
-    if not _db_exists():
-        print("  数据库不存在，请先导入数据")
-        _pause()
-        return
-
     db = _get_db()
     employees = db.get_all_employees()
     if not employees:
@@ -346,11 +341,6 @@ def _select_employee(db) -> dict | None:
 def func_personal_view(current_user: dict) -> None:
     """个人查看：选员工后进入子菜单。"""
     role = current_user.get("role", "employee")
-
-    if not _db_exists():
-        print("  数据库不存在")
-        _pause()
-        return
 
     db = _get_db()
 
@@ -917,11 +907,6 @@ def func_add_report() -> None:
     """手动添加或 OCR 导入体检报告。"""
     print_header("添加报告")
 
-    if not _db_exists():
-        print("  数据库不存在")
-        _pause()
-        return
-
     db = _get_db()
     try:
         employees = db.get_all_employees()
@@ -1043,12 +1028,12 @@ def _import_single_file(is_pdf: bool = False) -> None:
 
         print(f"\n  正在识别 {file_path} ...")
         ocr = OCREngine()
-        texts = ocr.extract(file_path, is_pdf=is_pdf)
+        texts = ocr.extract_text(file_path)
         if not texts or not any(t.strip() for t in texts):
             print("  [!] OCR 未识别到文本")
             return
 
-        print(f"  [OK] 识别到 {len([t for t in texts if t.strip()])} 页文本")
+        print(f"  [OK] 识别到 {len([t for t in texts if t.strip()])} 行文本")
         parser = ReportParser()
         report_data = parser.parse(texts)
         if not report_data.get("indicators"):
@@ -1059,9 +1044,10 @@ def _import_single_file(is_pdf: bool = False) -> None:
             return
 
         print(f"  [OK] 解析到 {len(report_data['indicators'])} 项指标")
-        report_date = report_data.get("report_date", "")
+        report_date = report_data.get("report_date") or ""
         if not report_date:
             report_date = _input("  报告日期 (YYYY-MM-DD): ").strip()
+            report_data["report_date"] = report_date
         hospital = report_data.get("hospital", "")
         if not hospital:
             hospital = _input("  医院名称: ").strip()
@@ -1077,8 +1063,11 @@ def _import_single_file(is_pdf: bool = False) -> None:
                 print(f"    [!] {name}: {info.get('value')} {info.get('unit', '')}")
 
         if _confirm("\n  确认导入?"):
-            new_id = db.add_report(emp["id"], report_date, report_data)
+            new_id = db.save_report(emp["id"], report_data)
             print(f"  [OK] 导入成功，报告 ID: {new_id}")
+
+            # 同步员工账号
+            _sync_employee_account(emp, emp["id"])
         else:
             print("  已取消")
     finally:
@@ -1086,13 +1075,13 @@ def _import_single_file(is_pdf: bool = False) -> None:
 
 
 def _import_batch() -> None:
-    """批量导入指定目录下的所有报告图片/PDF。"""
-    print_header("批量导入")
+    """批量导入指定目录下的所有报告图片/PDF。
 
-    if not _db_exists():
-        print("  数据库不存在")
-        _pause()
-        return
+    文件命名约定: "员工姓名_日期.ext" 或 "员工姓名.ext"
+    例如: 张三_2024-06-15.jpg、李四_2023-05-18.pdf、王五.png
+    解析后自动匹配或创建员工，需用户确认。
+    """
+    print_header("批量导入")
 
     dir_path = _input("\n  请输入目录路径: ").strip().strip('"').strip("'")
     if not dir_path or not Path(dir_path).is_dir():
@@ -1113,6 +1102,8 @@ def _import_batch() -> None:
         return
 
     print(f"  找到 {len(files)} 个文件")
+    print(f"  命名约定: 员工姓名_日期.ext 或 员工姓名.ext")
+    print(f"  示例: 张三_2024-06-15.jpg、李四.pdf")
     if not _confirm("  开始导入?"):
         _pause()
         return
@@ -1120,40 +1111,75 @@ def _import_batch() -> None:
     db = _get_db()
     ocr = OCREngine()
     parser = ReportParser()
-    success, fail = 0, 0
+    success, fail, skipped = 0, 0, 0
+
     try:
         for i, f in enumerate(files, 1):
             print(f"\n  [{i}/{len(files)}] {f.name}")
-            is_pdf = f.suffix.lower() == ".pdf"
             try:
-                texts = ocr.extract(str(f), is_pdf=is_pdf)
+                # OCR 提取文本
+                texts = ocr.extract_text(str(f))
                 if not texts or not any(t.strip() for t in texts):
                     print("    [!] OCR 无文本")
                     fail += 1
                     continue
+
+                # 解析结构化数据
                 report_data = parser.parse(texts)
                 if not report_data.get("indicators"):
                     print("    [!] 解析无指标")
                     fail += 1
                     continue
-                emp_name = report_data.get("employee_name", f.stem)
-                emp = db.get_employee_by_name(emp_name)
-                if not emp:
-                    emp = db.add_employee(emp_name, gender="未知")
-                report_date = report_data.get("report_date", "")
-                if not report_date:
-                    report_date = "未知"
-                db.add_report(emp["id"], report_date, report_data)
+
+                # 确定员工：优先用 OCR 解析出的姓名，回退到文件名
+                emp_name = report_data.get("name") or f.stem.split("_")[0].strip()
+                emp_gender = report_data.get("gender") or "未知"
+
+                if not emp_name:
+                    print("    [!] 无法确定员工姓名")
+                    fail += 1
+                    continue
+
+                # 确定日期：优先 OCR 解析，回退到文件名中的日期
+                report_date = report_data.get("report_date") or ""
+                if not report_date and "_" in f.stem:
+                    parts = f.stem.split("_")
+                    if len(parts) >= 2:
+                        potential_date = parts[1].strip()
+                        # 简单校验 YYYY-MM-DD 格式
+                        if len(potential_date) == 10 and potential_date.count("-") == 2:
+                            report_date = potential_date
+                if report_date:
+                    report_data["report_date"] = report_date
+
+                # 查找或创建员工
+                emp_id = db.get_or_create_employee(emp_name, emp_gender)
+                emp = db.get_employee(emp_id)
+
                 ind_count = len(report_data["indicators"])
-                print(f"    [OK] {emp_name}: {ind_count} 项指标")
+                abnormal_count = sum(
+                    1 for v in report_data["indicators"].values()
+                    if v.get("status") == "abnormal"
+                )
+                print(f"    [OK] {emp['name']}({emp['gender']}): "
+                      f"{ind_count} 项指标, {abnormal_count} 项异常, "
+                      f"日期={report_date or '未知'}")
+
+                db.save_report(emp_id, report_data)
+
+                # 同步员工账号
+                _sync_employee_account(emp, emp_id)
+
                 success += 1
+
             except Exception as e:
                 print(f"    [!] 失败: {e}")
+                logger.exception(f"批量导入失败: {f.name}")
                 fail += 1
     finally:
         db.close()
 
-    print(f"\n  导入完成: 成功 {success}, 失败 {fail}")
+    print(f"\n  导入完成: 成功 {success}, 失败 {fail}, 共 {len(files)} 个文件")
     _pause()
 
 
@@ -1164,11 +1190,6 @@ def _import_batch() -> None:
 def func_llm_interpret() -> None:
     """选择异常指标进行 LLM 解读。"""
     print_header("异常指标解读")
-
-    if not _db_exists():
-        print("  数据库不存在")
-        _pause()
-        return
 
     db = _get_db()
     try:
@@ -1274,11 +1295,6 @@ def func_llm_interpret() -> None:
 def func_trend_analysis() -> None:
     """全员指标趋势分析。"""
     print_header("全员趋势")
-
-    if not _db_exists():
-        print("  数据库不存在")
-        _pause()
-        return
 
     db = _get_db()
     try:
@@ -1413,11 +1429,30 @@ def _test_llm_connection(config: dict) -> None:
     try:
         agent = _get_llm_agent()
         advice = agent.get_advice("血糖", 6.5, "3.9-6.1", detailed=False)
-        if advice and advice.get("summary"):
-            print("  [OK] 连接成功")
-            print(f"  测试结果: {advice.get('summary', '?')[:80]}")
-        else:
+        if not advice or not advice.get("summary"):
             print("  [!] 连接成功但返回空结果")
+            return
+
+        source = advice.get("source", "unknown")
+        summary = advice.get("summary", "?")[:80]
+
+        if source == "llm":
+            print(f"  [OK] 连接成功 (LLM)")
+            print(f"  测试结果: {summary}")
+        elif source == "mock":
+            print(f"  [OK] Mock 模式正常")
+            print(f"  测试结果: {summary}")
+        elif source == "mock_fallback":
+            error = advice.get('error', '未知')
+            if 'timeout' in error.lower() or 'timed out' in error.lower():
+                print(f"  [!] 连接超时（30s 内未响应）")
+            else:
+                print(f"  [!] 连接失败，已回退 Mock")
+            print(f"  错误信息: {error}")
+            print(f"  Mock 结果: {summary}")
+        else:
+            print(f"  [?] 未知状态: {source}")
+            print(f"  测试结果: {summary}")
     except Exception as e:
         print(f"  [!] 测试失败: {e}")
 
@@ -1426,8 +1461,20 @@ def _test_llm_connection(config: dict) -> None:
 #  主菜单
 # ======================================================================
 
+def _init_database() -> None:
+    """初始化数据库（建表 + 同步员工账号）。"""
+    db = _get_db()
+    db.close()
+    _sync_all_employee_accounts()
+
+
 def main():
-    if _db_exists():
+    # 启动时确保数据库已创建
+    if not _db_exists():
+        print("  [提示] 首次启动，正在初始化数据库...")
+        _init_database()
+        print("  [OK] 数据库初始化完成\n")
+    else:
         _sync_all_employee_accounts()
 
     while True:
