@@ -1,8 +1,0 @@
-{
-  "mode": "api",
-  "api_key": "AQAAANCMnd8BFdERjHoAwE/Cl+sBAAAA6bU2ThVz60mysvvXQYc/1wAAAAAuAAAARQAtAEgAZQBhAGwAdABoACAAQQBnAGUAbgB0ACAAQQBQAEkAIABLAGUAeQAAABBmAAAAAQAAIAAAADwqK7iE2keSmDABZAaR03oarxQx0qMly2AzQTm3TUKYAAAAAA6AAAAAAgAAIAAAAOQnRL8w+JYuwLbdOfj721FhiX4qaR5OnEZrPvdoVR50QAAAAF9F3yA7HfK7LzNcA+23QhyTIJrOVRvmK6ADLpBAgBsmZD7a4ZzbND0d3pV70Q4q7htlUKNNyKUoN60PmlwrhD5AAAAAPwk6kIdpUeujW7IWl0I1TyEWU6OANkJlOoMiGWuBkArgbz2t3XhJjwNS/XRoGbDBkMw6f0AJYqmtnZHBMhnBUA==",
-  "base_url": "https://deepkey.top/v1",
-  "api_model": "claude-haiku-4-5-20251001",
-  "local_url": "http://localhost:1234/v1",
-  "local_model": "Qwen 3.5"
-}

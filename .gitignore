@@ -6,8 +6,11 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Data (contains user health data, credentials, API keys)
-/data
+# Data — 运行时共享，不提交数据库和日志
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
+/data/app.log
 
 # Batch test artifacts
 batch_test/
@@ -19,4 +22,3 @@ Desktop.ini
 
 # Markdown
 /TODO.md
-/data/
