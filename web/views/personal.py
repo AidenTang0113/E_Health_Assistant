@@ -137,30 +137,104 @@ def _render_profile_tab(db, emp_id: int, history: list) -> None:
 
 
 def _render_trend_tab(db, emp_id: int, emp_name: str, history: list) -> None:
-    """个人趋势：各项指标历史变化。"""
+    """个人趋势：各项指标历史变化 + 折线图可视化。"""
     if len(history) < 2:
         st.info("历史报告不足 2 份，无法分析趋势。")
         return
 
+    dates = [r["report_date"] for r in history]
     latest_indicators = history[-1]["report_data"].get("indicators", {})
-    trend_data = []
+
+    # 收集所有指标的时序数据
+    ind_data: dict[str, dict] = {}
+    trend_table_rows = []
 
     for ind_name in latest_indicators:
         trend = db.check_trend_warning(emp_id, ind_name)
         if trend["trend"] != "insufficient" and len(trend["values"]) > 1:
             vals_str = " → ".join(str(v) for v in trend["values"])
-            trend_data.append({
+            trend_table_rows.append({
                 "指标": ind_name,
                 "数值变化": vals_str,
                 "趋势": trend["trend"],
                 "预警": "⚠️ " + trend["message"] if trend["warning"] else "",
             })
 
-    if not trend_data:
+            # 提取每次报告该指标的值和状态
+            ind_values = []
+            abnormal_flags = []
+            ref_range = ""
+            unit = ""
+            for record in history:
+                indicators = record["report_data"].get("indicators", {})
+                info = indicators.get(ind_name)
+                if info:
+                    ind_values.append(info.get("value"))
+                    abnormal_flags.append(info.get("status") == "abnormal")
+                    if not ref_range:
+                        ref_range = info.get("ref_range", "")
+                    if not unit:
+                        unit = info.get("unit", "")
+                else:
+                    ind_values.append(None)
+                    abnormal_flags.append(False)
+
+            # 过滤缺失值
+            valid_pairs = [
+                (d, v, f) for d, v, f in zip(dates, ind_values, abnormal_flags)
+                if v is not None
+            ]
+            if valid_pairs:
+                ind_data[ind_name] = {
+                    "values": [v for _, v, _ in valid_pairs],
+                    "dates": [d for d, _, _ in valid_pairs],
+                    "ref_range": ref_range,
+                    "unit": unit,
+                    "abnormal_flags": [f for _, _, f in valid_pairs],
+                }
+
+    if not ind_data:
         st.info("无趋势数据。")
         return
 
-    st.dataframe(pd.DataFrame(trend_data), use_container_width=True, hide_index=True)
+    # 趋势汇总表
+    section_header("趋势汇总", f"{len(trend_table_rows)} 项指标有趋势数据")
+    st.dataframe(pd.DataFrame(trend_table_rows), use_container_width=True, hide_index=True)
+
+    # 单指标详细折线图
+    section_header("趋势可视化", "选择指标查看变化曲线")
+    ind_names = list(ind_data.keys())
+    selected_ind = st.selectbox("选择指标", ind_names, key="personal_trend_ind")
+
+    if selected_ind:
+        d = ind_data[selected_ind]
+        from web.components import render_trend_chart
+        render_trend_chart(
+            indicator_name=selected_ind,
+            dates=d["dates"],
+            values=d["values"],
+            ref_range=d["ref_range"],
+            unit=d["unit"],
+            abnormal_flags=d["abnormal_flags"],
+            height=400,
+        )
+
+    # 多指标小倍数图
+    if len(ind_data) > 1:
+        section_header("全部指标对比", "小倍数图并排展示")
+        from web.components import render_multi_trend
+        all_dates = sorted(set(dates))
+        multi_data: dict[str, dict] = {}
+        for name, d in ind_data.items():
+            date_value_map = dict(zip(d["dates"], d["values"]))
+            date_flag_map = dict(zip(d["dates"], d["abnormal_flags"]))
+            multi_data[name] = {
+                "values": [date_value_map.get(dt) for dt in all_dates],
+                "ref_range": d["ref_range"],
+                "unit": d["unit"],
+                "abnormal_flags": [date_flag_map.get(dt, False) for dt in all_dates],
+            }
+        render_multi_trend(multi_data, all_dates, height=260)
 
 
 def _render_interpret_tab(db, emp_id: int, emp_name: str, history: list) -> None:
